@@ -1,0 +1,46 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+
+# Temporary files
+temp/
+*.tmp
+*.temp
+
+# Audio files (from YouTube downloads)
+*.m4a
+*.webm
+*.mp3
+*.mp4
+*.wav
+
+# Summary files
+summary_*.txt
+
+# Log files
+*.log

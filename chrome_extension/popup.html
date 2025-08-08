@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>YouTube Summarizer</title>
+    <style>
+        body {
+            width: 400px;
+            min-height: 500px;
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        h1 {
+            text-align: center;
+            margin: 0 0 20px 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .video-info {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .video-info h3 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .video-id {
+            margin: 0;
+            font-size: 12px;
+            opacity: 0.8;
+            font-family: monospace;
+        }
+
+        #summarizeBtn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        #summarizeBtn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        #summarizeBtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #status {
+            display: none;
+            margin-bottom: 15px;
+        }
+
+        #progressBar {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            margin-bottom: 10px;
+        }
+
+        #progressBar::-webkit-progress-bar {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        #progressBar::-webkit-progress-value {
+            background: linear-gradient(45deg, #00b894, #00cec9);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        #progressText {
+            font-size: 14px;
+            text-align: center;
+            margin: 0;
+            font-weight: 500;
+        }
+
+        #statusLog {
+            max-height: 120px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 11px;
+            font-family: monospace;
+            margin-top: 10px;
+        }
+
+        .status-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-entry:last-child {
+            border-bottom: none;
+        }
+
+
+
+        .error-container {
+            background: rgba(255, 107, 107, 0.2);
+            border: 1px solid rgba(255, 107, 107, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .error-container h3 {
+            margin: 0 0 10px 0;
+            color: #ff6b6b;
+        }
+
+        .error-help {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .error-help ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .error-help li {
+            margin: 5px 0;
+            font-size: 12px;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        #summaryResult {
+            margin-bottom: 15px;
+        }
+
+        .summary-container {
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .summary-container h3 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .summary-content {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            line-height: 1.5;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .summary-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .summary-action-btn {
+            flex: 1;
+            padding: 8px 12px;
+            background: rgba(0, 255, 0, 0.2);
+            color: white;
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .summary-action-btn:hover {
+            background: rgba(0, 255, 0, 0.3);
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 YouTube Summarizer</h1>
+        
+        <div id="videoInfo">
+            <div class="video-info">
+                <h3>🔍 Detecting video...</h3>
+                <p class="video-id">Please wait...</p>
+            </div>
+        </div>
+
+        <button id="summarizeBtn" disabled>
+            <span class="loading-spinner"></span>
+            Loading...
+        </button>
+
+        <div id="status" style="display: none;">
+            <div id="summaryResult"></div>
+            <progress id="progressBar" value="0" max="100"></progress>
+            <p id="progressText">Initializing...</p>
+            <div id="statusLog"></div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
