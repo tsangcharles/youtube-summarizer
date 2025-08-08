@@ -139,7 +139,7 @@ def transcribe_audio(audio_file):
         
         # Load Whisper model
         print("🤖 Loading Whisper model...")
-        model = whisper.load_model("base")
+        model = whisper.load_model("tiny")
         
         # Load audio and transcribe
         audio_data = load_audio_with_ffmpeg(audio_file)
