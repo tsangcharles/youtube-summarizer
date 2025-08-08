@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const statusDiv = document.getElementById('status');
     const summaryResultDiv = document.getElementById('summaryResult');
     const videoInfoDiv = document.getElementById('videoInfo');
-    const progressBar = document.getElementById('progressBar');
+
     const progressText = document.getElementById('progressText');
 
     // Get video info from content script with retry logic
@@ -103,13 +103,10 @@ document.addEventListener('DOMContentLoaded', function() {
         summarizeBtn.innerHTML = '<span class="loading-spinner"></span>Processing...';
         summaryResultDiv.innerHTML = ''; // Clear previous summary
         statusDiv.style.display = 'block';
-        progressBar.style.display = 'block';
         
-        // Initial status
-        updateProgress('🚀 Starting summarization...');
-
         try {
             // Get video info and send to background script
+            updateProgress('🔍 Getting video information...');
             const videoInfo = await getVideoInfoWithRetry();
             
             chrome.runtime.sendMessage({
@@ -118,7 +115,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }, function(result) {
                 if (result && result.success) {
                     displayResult(result.summary);
-                    updateProgress('✅ Summary completed!');
                 } else {
                     displayError(result ? result.error : 'Unknown error occurred');
                     updateProgress('❌ Failed to generate summary');
@@ -137,18 +133,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateProgress(status) {
         progressText.textContent = status;
         
-        // Update progress bar based on status
-        let progress = 0;
-        if (status.includes('Starting')) progress = 10;
-        else if (status.includes('Connecting')) progress = 20;
-        else if (status.includes('Extracting')) progress = 30;
-        else if (status.includes('Downloading')) progress = 40;
-        else if (status.includes('Transcribing')) progress = 60;
-        else if (status.includes('Generating')) progress = 80;
-        else if (status.includes('completed') || status.includes('successfully')) progress = 100;
-        else if (status.includes('Failed') || status.includes('Error')) progress = 0;
-        
-        progressBar.value = progress;
+
         
         // Add status to log
         const timestamp = new Date().toLocaleTimeString();
@@ -204,7 +189,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <ul>
                         <li>Make sure you're on a YouTube video page</li>
                         <li>Refresh the page and try again</li>
-                        <li>Make sure the Docker server is running</li>
+                        <li>Make sure the application is running</li>
                         <li>Check your Gemini API key in the .env file</li>
                     </ul>
                 </div>

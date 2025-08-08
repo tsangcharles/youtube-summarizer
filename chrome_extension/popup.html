@@ -80,25 +80,7 @@
             margin-bottom: 15px;
         }
 
-        #progressBar {
-            width: 100%;
-            height: 8px;
-            border-radius: 4px;
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            margin-bottom: 10px;
-        }
 
-        #progressBar::-webkit-progress-bar {
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 4px;
-        }
-
-        #progressBar::-webkit-progress-value {
-            background: linear-gradient(45deg, #00b894, #00cec9);
-            border-radius: 4px;
-            transition: width 0.3s ease;
-        }
 
         #progressText {
             font-size: 14px;
@@ -262,7 +244,6 @@
 
         <div id="status" style="display: none;">
             <div id="summaryResult"></div>
-            <progress id="progressBar" value="0" max="100"></progress>
             <p id="progressText">Initializing...</p>
             <div id="statusLog"></div>
         </div>

@@ -172,9 +172,11 @@ def cleanup_audio_files(video_id):
     except Exception as e:
         print(f"Error during cleanup: {e}")
 
-def get_transcript_with_whisper(url, video_id):
+def get_transcript_with_whisper(url, video_id, status_callback=None):
     """Get transcript using Whisper speech-to-text"""
     try:
+        if status_callback:
+            status_callback('Downloading audio from YouTube...')
         print("📥 Downloading audio from YouTube...")
         audio_file = download_audio(url, video_id)
         
@@ -182,8 +184,13 @@ def get_transcript_with_whisper(url, video_id):
             print("❌ Failed to download audio file")
             return None
         
+        if status_callback:
+            status_callback('Audio downloaded, starting transcription...')
         print("🎤 Transcribing audio with Whisper...")
         transcript = transcribe_audio(audio_file)
+        
+        if status_callback:
+            status_callback('Transcription completed, cleaning up...')
         
         # Clean up audio file
         if os.path.exists(audio_file):

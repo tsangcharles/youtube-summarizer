@@ -13,9 +13,6 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 
 async function handleVideoSummarization(videoInfo, sendResponse) {
   try {
-    // Update status
-    updateStatus('🚀 Starting summarization...');
-    
     // Check if we have the required info
     if (!videoInfo || !videoInfo.videoId) {
       sendResponse({
@@ -25,9 +22,8 @@ async function handleVideoSummarization(videoInfo, sendResponse) {
       return;
     }
 
-    // Use the local Python backend with synchronous endpoint
+    // Use sync endpoint for processing
     try {
-      updateStatus('🔗 Connecting to local server...');
       const response = await fetch(`${API_BASE_URL}/summarize-sync`, {
         method: 'POST',
         headers: {
@@ -41,7 +37,6 @@ async function handleVideoSummarization(videoInfo, sendResponse) {
 
       if (response.ok) {
         const result = await response.json();
-        updateStatus('✅ Summary generated successfully!');
         sendResponse({
           success: true,
           summary: result.summary
@@ -52,12 +47,10 @@ async function handleVideoSummarization(videoInfo, sendResponse) {
         throw new Error(errorData.error || 'Server error');
       }
     } catch (error) {
-      console.log('Local server error:', error.message);
-      
       // Provide more specific error messages
       if (error.message.includes('Failed to fetch')) {
-        updateStatus('❌ Cannot connect to server. Is Docker running?');
-        throw new Error('Cannot connect to server. Please make sure the Docker server is running.');
+        updateStatus('❌ Connection failed');
+        throw new Error('Connection failed. Please try again.');
       } else if (error.message.includes('API key')) {
         updateStatus('❌ Invalid API key. Check your .env file.');
         throw new Error('Invalid Gemini API key. Please check your .env file.');
@@ -65,13 +58,12 @@ async function handleVideoSummarization(videoInfo, sendResponse) {
         updateStatus('❌ YouTube access denied. Retrying...');
         throw new Error('YouTube temporarily blocked the request. Please try again.');
       } else {
-        updateStatus('❌ Server error occurred');
-        throw new Error(`Server error: ${error.message}`);
+        updateStatus('❌ Processing failed');
+        throw new Error(`Processing failed: ${error.message}`);
       }
     }
 
   } catch (error) {
-    console.error('Summarization error:', error);
     updateStatus('❌ Error occurred');
     sendResponse({
       success: false,

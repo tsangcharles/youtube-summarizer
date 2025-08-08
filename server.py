@@ -133,10 +133,12 @@ def process_video_summary(request_id, video_url, video_title):
         if not video_title:
             video_title = extracted_title
         
-        processing_status[request_id] = 'Downloading and transcribing audio...'
+        # Define status callback function
+        def update_status(status):
+            processing_status[request_id] = status
         
-        # Get transcript
-        transcript = get_transcript_with_whisper(video_url, video_id)
+        # Get transcript with status updates
+        transcript = get_transcript_with_whisper(video_url, video_id, update_status)
         if not transcript:
             processing_status[request_id] = {
                 'type': 'error',
