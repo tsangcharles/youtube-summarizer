@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir -r requirements_server.txt
 # Copy application files
 COPY server.py .
 COPY summarize_youtube_gemini.py .
+COPY gunicorn.conf.py .
 
 # Create temp directory for audio files
 RUN mkdir -p /app/temp
@@ -38,5 +39,5 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# Run the application
-CMD ["python", "server.py"]
+# Run the application with Gunicorn
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "server:app"]

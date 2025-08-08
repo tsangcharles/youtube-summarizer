@@ -18,8 +18,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from summarize_youtube_gemini import (
     get_video_info, 
     get_transcript_with_whisper, 
-    summarize_with_gemini,
-    find_ffmpeg
+    summarize_with_gemini
 )
 
 app = Flask(__name__)
@@ -32,8 +31,7 @@ processing_status = {}
 def health_check():
     """Health check endpoint"""
     return jsonify({
-        'status': 'healthy',
-        'ffmpeg_available': find_ffmpeg() is not None
+        'status': 'healthy'
     })
 
 @app.route('/summarize', methods=['POST'])
@@ -254,12 +252,5 @@ if __name__ == '__main__':
     print("📡 Server will be available at: http://localhost:5000")
     print("🔧 Health check: http://localhost:5000/health")
     print("📝 Summarize endpoint: http://localhost:5000/summarize")
-    
-    # Check if ffmpeg is available
-    ffmpeg_path = find_ffmpeg()
-    if ffmpeg_path:
-        print(f"✅ FFmpeg found at: {ffmpeg_path}")
-    else:
-        print("⚠️  FFmpeg not found - some features may not work")
     
     app.run(host='0.0.0.0', port=5000, debug=True)

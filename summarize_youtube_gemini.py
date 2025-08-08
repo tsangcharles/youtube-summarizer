@@ -20,14 +20,8 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY environment variable is required. Please set it in your .env file.")
 
-# FFmpeg paths for different platforms
-FFMPEG_PATHS = [
-    "ffmpeg",
-    "ffmpeg.exe",
-    r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-    r"C:\ffmpeg\bin\ffmpeg.exe",
-    os.path.expanduser(r"~\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-7.1.1-full_build\bin\ffmpeg.exe")
-]
+# FFmpeg path for Docker environment
+FFMPEG_PATH = "ffmpeg"
 
 # YouTube URL patterns
 YOUTUBE_PATTERNS = [
@@ -38,20 +32,10 @@ YOUTUBE_PATTERNS = [
 # yt-dlp configuration
 YDL_OPTS = {
     'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
-    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     'extractor_retries': 3,
     'retries': 3,
 }
-
-def find_ffmpeg():
-    """Find ffmpeg executable in common locations"""
-    for path in FFMPEG_PATHS:
-        if shutil.which(path) or os.path.exists(path):
-            print(f"Found ffmpeg at: {path}")
-            return path
-    
-    print("FFmpeg not found in PATH or common locations")
-    return None
 
 def extract_video_id(url):
     """Extract YouTube video ID from URL"""
@@ -122,36 +106,26 @@ def download_audio(url, video_id):
 
 def load_audio_with_ffmpeg(audio_file):
     """Load audio using ffmpeg and return numpy array"""
-    try:
-        ffmpeg_path = find_ffmpeg()
-        if not ffmpeg_path:
-            print("FFmpeg not found, cannot load audio")
-            return None
-        
-        cmd = [
-            ffmpeg_path,
-            '-i', audio_file,
-            '-f', 's16le',
-            '-acodec', 'pcm_s16le',
-            '-ar', '16000',
-            '-ac', '1',
-            '-loglevel', 'quiet',
-            'pipe:1'
-        ]
-        
-        print(f"Loading audio with ffmpeg: {audio_file}")
-        result = subprocess.run(cmd, capture_output=True, check=True)
-        
-        # Convert bytes to numpy array
-        audio_data = np.frombuffer(result.stdout, dtype=np.int16)
-        audio_data = audio_data.astype(np.float32) / 32768.0
-        
-        print(f"Audio loaded successfully: {len(audio_data)} samples")
-        return audio_data
-        
-    except Exception as e:
-        print(f"Error loading audio with ffmpeg: {e}")
-        return None
+    cmd = [
+        FFMPEG_PATH,
+        '-i', audio_file,
+        '-f', 's16le',
+        '-acodec', 'pcm_s16le',
+        '-ar', '16000',
+        '-ac', '1',
+        '-loglevel', 'quiet',
+        'pipe:1'
+    ]
+    
+    print(f"🔧 Loading audio: {audio_file}")
+    result = subprocess.run(cmd, capture_output=True, check=True)
+    
+    # Convert bytes to numpy array
+    audio_data = np.frombuffer(result.stdout, dtype=np.int16)
+    audio_data = audio_data.astype(np.float32) / 32768.0
+    
+    print(f"✅ Audio loaded successfully: {len(audio_data)} samples")
+    return audio_data
 
 def transcribe_audio(audio_file):
     """Transcribe audio using Whisper"""
@@ -163,19 +137,15 @@ def transcribe_audio(audio_file):
         file_size = os.path.getsize(audio_file)
         print(f"📁 Audio file found: {audio_file} (size: {file_size} bytes)")
         
-        # Try to load audio with ffmpeg first
-        print("🔧 Loading audio with FFmpeg...")
-        audio_data = load_audio_with_ffmpeg(audio_file)
-        
+        # Load Whisper model
         print("🤖 Loading Whisper model...")
         model = whisper.load_model("base")
         
-        if audio_data is None:
-            print("⚠️  Failed to load audio with ffmpeg, using Whisper's built-in method...")
-            result = model.transcribe(audio_file, fp16=False, verbose=True)
-        else:
-            print("🎵 Transcribing loaded audio data...")
-            result = model.transcribe(audio_data, fp16=False, verbose=True)
+        # Load audio and transcribe
+        audio_data = load_audio_with_ffmpeg(audio_file)
+        
+        print("🎵 Transcribing audio data...")
+        result = model.transcribe(audio_data, fp16=False, verbose=True)
         
         print("✅ Transcription completed successfully!")
         return result["text"]
@@ -269,12 +239,6 @@ def main():
     """Main function for command-line usage"""
     print("YouTube Video Summarizer using Speech-to-Text + Gemini")
     print("=" * 60)
-    
-    ffmpeg_path = find_ffmpeg()
-    if ffmpeg_path:
-        print("✅ FFmpeg found - audio loading will be available")
-    else:
-        print("⚠️  FFmpeg not found - some features may not work")
     
     while True:
         video_url = input("\nEnter YouTube video URL (or 'quit' to exit): ").strip()
