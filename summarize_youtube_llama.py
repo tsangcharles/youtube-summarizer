@@ -21,6 +21,10 @@ from urllib.parse import urlparse, parse_qs
 LLAMA_BASE_URL = os.environ.get('LLAMA_BASE_URL', 'http://localhost:11434')
 LLAMA_MODEL = os.environ.get('LLAMA_MODEL', 'llama3.2:1b')  # Default model, can be overridden
 
+# Global Whisper model instance (loaded once, reused many times)
+_whisper_model = None
+_whisper_device = None
+
 # FFmpeg path for Docker environment
 FFMPEG_PATH = "ffmpeg"
 
@@ -39,6 +43,45 @@ YDL_OPTS = {
     'extract_flat': False,
     'no_warnings': False,
 }
+
+def initialize_whisper_model(model_name="base", force_reload=False):
+    """Initialize and load the Whisper model once for reuse"""
+    global _whisper_model, _whisper_device
+    
+    # Return existing model if already loaded and not forcing reload
+    if _whisper_model is not None and not force_reload:
+        print(f"✅ Whisper model already loaded on {_whisper_device}")
+        return _whisper_model
+    
+    try:
+        # Check for CUDA availability
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"🚀 Initializing Whisper model '{model_name}' on device: {device}")
+        
+        # Load the model
+        model = whisper.load_model(model_name, device=device)
+        
+        # Store globally for reuse
+        _whisper_model = model
+        _whisper_device = device
+        
+        print(f"✅ Whisper model '{model_name}' loaded successfully and cached for reuse!")
+        return model
+        
+    except Exception as e:
+        print(f"❌ Error loading Whisper model: {e}")
+        _whisper_model = None
+        _whisper_device = None
+        raise
+
+def get_whisper_model():
+    """Get the loaded Whisper model, initializing if necessary"""
+    global _whisper_model
+    
+    if _whisper_model is None:
+        return initialize_whisper_model()
+    
+    return _whisper_model
 
 def extract_video_id(url):
     """Extract YouTube video ID from URL"""
@@ -141,19 +184,15 @@ def load_audio_with_ffmpeg(audio_file):
     return audio_data
 
 def transcribe_audio(audio_file):
-    """Transcribe audio using Whisper with GPU acceleration"""
+    """Transcribe audio using pre-loaded Whisper model with GPU acceleration"""
     try:
         if not os.path.exists(audio_file):
             print(f"❌ Audio file not found: {audio_file}")
             return None
         
-        # Check for CUDA availability
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"🚀 Using device: {device}")
-        
-        # Load Whisper model fresh for each request
-        print("🤖 Loading Whisper model...")
-        model = whisper.load_model("base", device=device)
+        # Get the pre-loaded Whisper model (loads once, reuses many times)
+        print("🤖 Using pre-loaded Whisper model...")
+        model = get_whisper_model()
         
         # Load audio and transcribe
         audio_data = load_audio_with_ffmpeg(audio_file)
