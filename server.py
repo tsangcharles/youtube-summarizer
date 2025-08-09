@@ -18,7 +18,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from summarize_youtube_llama import (
     get_video_info, 
     get_transcript_with_whisper, 
-    summarize_with_llama
+    summarize_with_llama,
+    initialize_whisper_model
 )
 
 app = Flask(__name__)
@@ -255,4 +256,14 @@ if __name__ == '__main__':
     print("🔧 Health check: http://localhost:5000/health")
     print("📝 Summarize endpoint: http://localhost:5000/summarize")
     
+    # Preload Whisper model for better performance
+    print("\n🤖 Preloading Whisper model for optimal performance...")
+    try:
+        initialize_whisper_model()
+        print("✅ Whisper model preloaded successfully!")
+    except Exception as e:
+        print(f"⚠️ Warning: Could not preload Whisper model: {e}")
+        print("📝 Model will be loaded on first request instead.")
+    
+    print("\n🎉 Server ready to process requests!")
     app.run(host='0.0.0.0', port=5000, debug=True)
