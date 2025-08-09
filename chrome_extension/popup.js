@@ -199,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Simulate realistic processing steps with timing
             setTimeout(() => updateProgress('🎵 Transcribing audio...'), 3000);
-            setTimeout(() => updateProgress('🤖 Summarizing with Llama AI...'), 10000);
+            setTimeout(() => updateProgress('🤖 Summarizing with Qwen3 AI...'), 10000);
         } catch (error) {
             displayError(error);
             updateProgress('❌ Failed to process video');
@@ -215,7 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let progress = 0;
         if (status.includes('Downloading audio')) progress = 30;
         else if (status.includes('Transcribing audio')) progress = 65;
-        else if (status.includes('Summarizing with Llama')) progress = 90;
+        else if (status.includes('Summarizing with Qwen3')) progress = 90;
         else if (status.includes('Summarization successful')) progress = 100;
         else if (status.includes('Failed') || status.includes('Error')) progress = 0;
         
@@ -276,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <li>Make sure you're on a YouTube video page</li>
                         <li>Refresh the page and try again</li>
                         <li>Make sure the application is running</li>
-                        <li>Make sure your Llama server is running on localhost:11434</li>
+                        <li>Make sure your Qwen3 server is running on localhost:11434</li>
                     </ul>
                 </div>
             </div>

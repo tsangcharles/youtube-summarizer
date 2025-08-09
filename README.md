@@ -1,6 +1,6 @@
 # 🎥 YouTube Video Summarizer
 
-A powerful Chrome extension that automatically summarizes YouTube videos using AI (Whisper + Llama). Downloads video audio, transcribes it with Whisper, and generates concise summaries using Ollama's Llama models.
+A powerful Chrome extension that automatically summarizes YouTube videos using AI (Whisper + Qwen3). Downloads video audio, transcribes it with Whisper, and generates concise summaries using Ollama's Qwen3 models.
 
 ## 📁 Project Structure
 
@@ -15,7 +15,7 @@ youtube_summary/
 │   ├── icons/               # Extension icons
 │   └── README.md            # Extension setup guide
 ├── server.py                # 🚀 Flask backend server
-├── summarize_youtube_llama.py # 🤖 Core AI logic (Whisper + Llama)
+├── summarize_youtube_qwen.py # 🤖 Core AI logic (Whisper + Qwen3)
 ├── requirements_server.txt  # 📦 Python dependencies
 ├── Dockerfile              # 🐳 Docker configuration
 ├── docker-compose.yml      # 🐳 Docker Compose setup
@@ -36,11 +36,11 @@ docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
 docker run -d --gpus=all -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
 ```
 
-Next, download the Llama model (this runs in the background):
+Next, download the Qwen3 model (this runs in the background):
 
 ```bash
-# Download and setup the llama3.2:1b model
-docker exec ollama ollama pull llama3.2:1b
+# Download and setup the qwen3:0.6b model
+docker exec ollama ollama pull qwen3:0.6b
 ```
 
 **📝 Note:** The model download happens automatically and the container runs in the background. No need for interactive terminal sessions.
@@ -52,8 +52,8 @@ python setup_env.py
 
 # Option 2: Manual setup
 # Create .env file with Ollama configuration
-echo "LLAMA_BASE_URL=http://localhost:11434" > .env
-echo "LLAMA_MODEL=llama3.2:1b" >> .env
+echo "QWEN_BASE_URL=http://localhost:11434" > .env
+echo "QWEN_MODEL=qwen3:0.6b" >> .env
 ```
 
 ### 3. Start Server with Docker
@@ -117,7 +117,7 @@ docker stop ollama
 docker exec ollama ollama list
 
 # Download additional models
-docker exec ollama ollama pull llama3.2:3b
+docker exec ollama ollama pull qwen3:1.5b
 
 # Test Ollama API
 curl http://localhost:11434/api/tags
@@ -127,7 +127,7 @@ curl http://localhost:11434/api/tags
 
 - **One-click summarization** - No URL copying needed
 - **Auto video detection** - Works on any YouTube page
-- **AI-powered summaries** - Whisper + Llama
+- **AI-powered summaries** - Whisper + Qwen3
 - **Beautiful UI** - Modern, intuitive interface
 - **Docker deployment** - Easy setup and management
 - **Real-time progress** - See processing status
@@ -138,13 +138,13 @@ curl http://localhost:11434/api/tags
 
 - **Docker Desktop** - For running Ollama and the server
 - **Chrome browser** - For the extension
-- **Ollama** - For running Llama models locally
+- **Ollama** - For running Qwen3 models locally
 
 ## 🛠️ Development
 
 ### **Backend:** Flask server with async processing
 ### **Frontend:** Chrome extension with modern UI
-### **AI:** Whisper for transcription, Llama for summarization
+### **AI:** Whisper for transcription, Qwen3 for summarization
 ### **Deployment:** Docker containerization
 
 ## 🔧 Troubleshooting
@@ -167,7 +167,7 @@ docker compose logs
 1. Make sure Ollama container is running: `docker ps | grep ollama`
 2. Check if Ollama is accessible: `curl http://localhost:11434/api/tags`
 3. Verify the model is downloaded: `docker exec ollama ollama list`
-4. Check your `.env` file has correct LLAMA_BASE_URL and LLAMA_MODEL
+4. Check your `.env` file has correct QWEN_BASE_URL and QWEN_MODEL
 
 ### **Audio download issues:**
 - The server automatically handles YouTube's anti-bot measures
@@ -196,7 +196,7 @@ docker compose logs
 1. **Video Detection** - Extension detects YouTube video on current page
 2. **Audio Download** - Server downloads video audio using yt-dlp
 3. **Transcription** - Whisper AI converts audio to text
-4. **Summarization** - Llama AI creates concise summary
+4. **Summarization** - Qwen3 AI creates concise summary
 5. **Display** - Results shown in extension popup
 
 ## 📝 License
