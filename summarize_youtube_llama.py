@@ -18,7 +18,7 @@ from urllib.parse import urlparse, parse_qs
 
 # Configuration
 LLAMA_BASE_URL = os.environ.get('LLAMA_BASE_URL', 'http://localhost:11434')
-LLAMA_MODEL = os.environ.get('LLAMA_MODEL', 'llama2')  # Default model, can be overridden
+LLAMA_MODEL = os.environ.get('LLAMA_MODEL', 'llama3.2:1b')  # Default model, can be overridden
 
 # FFmpeg path for Docker environment
 FFMPEG_PATH = "ffmpeg"
