@@ -132,14 +132,11 @@ def load_audio_with_ffmpeg(audio_file):
         'pipe:1'
     ]
     
-    print(f"🔧 Loading audio: {audio_file}")
     result = subprocess.run(cmd, capture_output=True, check=True)
     
     # Convert bytes to numpy array
     audio_data = np.frombuffer(result.stdout, dtype=np.int16)
     audio_data = audio_data.astype(np.float32) / 32768.0
-    
-    print(f"✅ Audio loaded successfully: {len(audio_data)} samples")
     return audio_data
 
 def transcribe_audio(audio_file):
@@ -148,9 +145,6 @@ def transcribe_audio(audio_file):
         if not os.path.exists(audio_file):
             print(f"❌ Audio file not found: {audio_file}")
             return None
-        
-        file_size = os.path.getsize(audio_file)
-        print(f"📁 Audio file found: {audio_file} (size: {file_size} bytes)")
         
         # Load Whisper model fresh for each request
         print("🤖 Loading Whisper model...")
@@ -164,7 +158,7 @@ def transcribe_audio(audio_file):
         result = model.transcribe(
             audio_data, 
             fp16=False, 
-            verbose=True,
+            verbose=False,
             temperature=0.0,
             no_speech_threshold=0.6
         )
@@ -188,7 +182,6 @@ def cleanup_audio_files(video_id):
                 # Remove ALL audio files to prevent cross-contamination
                 if os.path.exists(file):
                     try:
-                        print(f"Cleaning up audio file: {file}")
                         os.remove(file)
                     except Exception as e:
                         print(f"Could not remove {file}: {e}")
@@ -213,14 +206,7 @@ def get_transcript_with_whisper(url, video_id, status_callback=None):
         transcript = transcribe_audio(audio_file)
         
         if status_callback:
-            status_callback('Transcription completed, processing transcript...')
-        
-        # Process transcript to remove timestamps and clean up
-        if transcript:
-            transcript = process_transcript(transcript)
-        
-        if status_callback:
-            status_callback('Transcript processing completed, cleaning up...')
+            status_callback('Transcription completed, cleaning up...')
         
         # Clean up audio file
         if os.path.exists(audio_file):
@@ -236,45 +222,7 @@ def get_transcript_with_whisper(url, video_id, status_callback=None):
         print(f"❌ Error in speech-to-text process: {e}")
         return None
 
-def process_transcript(transcript):
-    """Clean and process transcript by removing timestamps and improving formatting"""
-    if not transcript:
-        return None
-    
-    print("📝 Processing transcript...")
-    
-    # Remove common timestamp patterns like [00:00], (00:00), 00:00:00, etc.
-    import re
-    
-    # Remove timestamps in various formats
-    patterns = [
-        r'\[\d{1,2}:\d{2}\]',           # [MM:SS]
-        r'\[\d{1,2}:\d{2}:\d{2}\]',     # [HH:MM:SS]
-        r'\(\d{1,2}:\d{2}\)',           # (MM:SS)
-        r'\(\d{1,2}:\d{2}:\d{2}\)',     # (HH:MM:SS)
-        r'\d{1,2}:\d{2}:\d{2}',         # HH:MM:SS
-        r'\d{1,2}:\d{2}',               # MM:SS
-        r'^\d{1,2}:\d{2}\s*',           # Timestamps at start of lines
-        r'^\d{1,2}:\d{2}:\d{2}\s*',     # HH:MM:SS at start of lines
-    ]
-    
-    processed_transcript = transcript
-    for pattern in patterns:
-        processed_transcript = re.sub(pattern, '', processed_transcript)
-    
-    # Clean up extra whitespace and normalize
-    processed_transcript = re.sub(r'\s+', ' ', processed_transcript)  # Multiple spaces to single
-    processed_transcript = re.sub(r'\n\s*\n', '\n', processed_transcript)  # Multiple newlines
-    processed_transcript = processed_transcript.strip()
-    
-    # Remove common filler words and artifacts
-    processed_transcript = re.sub(r'\b(um|uh|er|ah)\b', '', processed_transcript, flags=re.IGNORECASE)
-    processed_transcript = re.sub(r'\s+', ' ', processed_transcript)  # Clean up spaces again
-    
-    print(f"✅ Transcript processed: {len(transcript)} chars → {len(processed_transcript)} chars")
-    print(f"📄 Processed transcript preview: {processed_transcript[:200]}...")
-    
-    return processed_transcript
+
 
 def summarize_with_llama(transcript, video_title=""):
     """Use local Llama model to summarize the transcript"""
