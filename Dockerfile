@@ -1,9 +1,11 @@
-FROM python:3.11-slim
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
 
 # Set environment variables to prevent Python cache files
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
