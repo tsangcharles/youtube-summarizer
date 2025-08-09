@@ -230,6 +230,7 @@ def summarize_with_gemini(transcript, video_title=""):
         
         **Main Takeaway:** (1 sentence)
         
+        For each key point, provide the relevant timestamp from the transcript.
         Keep it short and to the point. Focus on the most important information only.
         """
         
