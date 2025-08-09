@@ -75,6 +75,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const videoInfo = await getVideoInfoFromURL();
             
             if (videoInfo && videoInfo.videoId) {
+                // Store current video ID
+                localStorage.setItem('currentVideoId', videoInfo.videoId);
+                
                 // Check if this is a different video than last time
                 const lastVideoId = localStorage.getItem('lastVideoId');
                 if (lastVideoId && lastVideoId !== videoInfo.videoId) {
@@ -83,12 +86,100 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 displayVideoInfo(videoInfo);
+                
+                // Check for cached summary or active task
+                await checkVideoStatus(videoInfo.videoId);
+                
             } else {
                 throw new Error('Not on a YouTube video page');
             }
         } catch (error) {
             console.error('❌ Error initializing popup:', error);
             displayError(error.message);
+        }
+    }
+    
+    async function checkVideoStatus(videoId) {
+        try {
+            // Check if there's a cached summary
+            console.log('🔍 Checking cache for video:', videoId);
+            const cached = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({
+                    action: 'getCachedSummary',
+                    videoId: videoId
+                }, (response) => {
+                    console.log('🔍 Cache response:', response);
+                    resolve(response);
+                });
+            });
+            
+            if (cached && cached.summary) {
+                console.log('📋 Found cached summary for video:', videoId);
+                displayResult(cached.summary, true);
+                
+                // Show status section with cached results
+                statusDiv.style.display = 'block';
+                progressBar.style.display = 'block';
+                progressBar.value = 100;
+                
+                // Load status log for this video first
+                await loadStatusLog(videoId);
+                
+                // Check if we have completion in the log, if not show "loaded from cache"
+                const logKey = `statusLog_${videoId}`;
+                const result = await chrome.storage.local.get([logKey]);
+                const logs = result[logKey] || [];
+                const hasCompletion = logs.some(log => log.status.includes('Summarization successful'));
+                
+                if (!hasCompletion) {
+                    updateProgress('📋 Loaded from cache', true);
+                } else {
+                    // Don't override the progress text if we have completion in log
+                    // Set text directly without logging to avoid duplicates
+                    progressText.textContent = '✅ Summarization successful!';
+                    progressBar.value = 100;
+                }
+                
+                return;
+            }
+            
+            // Check if there's an active task
+            const taskStatus = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({
+                    action: 'getTaskStatus',
+                    videoId: videoId
+                }, (response) => {
+                    resolve(response);
+                });
+            });
+            
+            if (taskStatus && taskStatus.status !== 'idle') {
+                console.log('🔄 Found active task for video:', videoId, 'Status:', taskStatus.status);
+                
+                if (taskStatus.status === 'completed' && taskStatus.summary) {
+                    displayResult(taskStatus.summary);
+                    // No need for completion message - summary display indicates success
+                } else {
+                    // Show processing state
+                    summarizeBtn.disabled = true;
+                    summarizeBtn.innerHTML = '<span class="loading-spinner"></span>Processing...';
+                    statusDiv.style.display = 'block';
+                    progressBar.style.display = 'block';
+                    
+                    let statusText = '🔄 Processing in background...';
+                    if (taskStatus.status === 'downloading') statusText = '📥 Downloading audio...';
+                    else if (taskStatus.status === 'transcribing') statusText = '🎵 Transcribing audio...';
+                    else if (taskStatus.status === 'summarizing') statusText = '🤖 Summarizing with Qwen3 AI...';
+                    
+                    updateProgress(statusText, true); // Skip logging since this is UI restoration
+                }
+            }
+            
+            // Always load status log for this video (even if no active task)
+            loadStatusLog(videoId);
+            
+        } catch (error) {
+            console.error('Error checking video status:', error);
         }
     }
 
@@ -144,8 +235,31 @@ document.addEventListener('DOMContentLoaded', function() {
     chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         if (request.action === 'updateStatus') {
             updateProgress(request.status);
+        } else if (request.action === 'statusUpdate') {
+            // Check if this update is for the current video
+            const currentVideoId = getCurrentVideoId();
+            if (currentVideoId === request.videoId) {
+                updateProgress(request.status, true); // Skip logging - background already logged it
+                // Refresh the log display to show the new entry
+                loadStatusLog(currentVideoId);
+            }
+        } else if (request.action === 'summaryReady') {
+            // Check if this summary is for the current video
+            const currentVideoId = getCurrentVideoId();
+            console.log('📨 Summary ready for video:', request.videoId, 'Current video:', currentVideoId);
+            if (currentVideoId === request.videoId) {
+                console.log('✅ Displaying summary for current video');
+                displayResult(request.summary);
+                // Remove redundant completion message - the summary display itself indicates success
+                summarizeBtn.disabled = false;
+                summarizeBtn.innerHTML = '🚀 Generate Summary';
+            }
         }
     });
+    
+    function getCurrentVideoId() {
+        return localStorage.getItem('currentVideoId');
+    }
 
     // Handle summarize button click
     summarizeBtn.addEventListener('click', function() {
@@ -168,7 +282,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function startSummarization() {
         // Reset UI
         summarizeBtn.disabled = true;
-        summarizeBtn.innerHTML = '<span class="loading-spinner"></span>Processing...';
+        summarizeBtn.innerHTML = '<span class="loading-spinner"></span>Starting...';
         summaryResultDiv.innerHTML = ''; // Clear previous summary
         statusDiv.style.display = 'block';
         progressBar.style.display = 'block';
@@ -177,29 +291,44 @@ document.addEventListener('DOMContentLoaded', function() {
             // Get video info and send to background script
             const videoInfo = await getVideoInfoFromURL();
             
-            // Start the processing with status updates  
-            updateProgress('📥 Downloading audio...');
-            
             chrome.runtime.sendMessage({
                 action: 'summarizeVideo',
                 videoInfo: videoInfo
             }, function(result) {
                 if (result && result.success) {
-                    updateProgress('✅ Summarization successful!');
-                    setTimeout(() => {
-                        displayResult(result.summary);
-                    }, 1000); // Show success message briefly before showing result
+                    if (result.processing) {
+                        // Processing started in background
+                        updateProgress('🚀 Processing started in background...');
+                        summarizeBtn.innerHTML = '<span class="loading-spinner"></span>Processing...';
+                        // Button stays disabled until completion
+                    } else if (result.summary) {
+                        // Immediate result (from cache)
+                        if (result.cached) {
+                            updateProgress('📋 Loaded from cache');
+                        } else {
+                            // Don't show redundant completion message for immediate results
+                            // The summary display itself indicates success
+                        }
+                        setTimeout(() => {
+                            displayResult(result.summary, result.cached);
+                        }, 500);
+                        summarizeBtn.disabled = false;
+                        summarizeBtn.innerHTML = '🚀 Generate Summary';
+                    }
                 } else {
-                    displayError(result ? result.error : 'Unknown error occurred');
-                    updateProgress('❌ Failed to generate summary');
+                    if (result && result.error === 'Summarization already in progress for this video') {
+                        updateProgress('🔄 Summarization already running in background...');
+                        summarizeBtn.innerHTML = '<span class="loading-spinner"></span>Processing...';
+                        // Keep button disabled until completion
+                    } else {
+                        displayError(result ? result.error : 'Unknown error occurred');
+                        updateProgress('❌ Failed to generate summary');
+                        summarizeBtn.disabled = false;
+                        summarizeBtn.innerHTML = '🚀 Generate Summary';
+                    }
                 }
-                summarizeBtn.disabled = false;
-                summarizeBtn.innerHTML = '🚀 Generate Summary';
             });
             
-            // Simulate realistic processing steps with timing
-            setTimeout(() => updateProgress('🎵 Transcribing audio...'), 3000);
-            setTimeout(() => updateProgress('🤖 Summarizing with Qwen3 AI...'), 10000);
         } catch (error) {
             displayError(error);
             updateProgress('❌ Failed to process video');
@@ -208,7 +337,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function updateProgress(status) {
+    function updateProgress(status, skipLogging = false) {
         progressText.textContent = status;
         
         // Update progress bar based on status
@@ -221,19 +350,73 @@ document.addEventListener('DOMContentLoaded', function() {
         
         progressBar.value = progress;
         
-        // Add status to log
+        // Only add to log if this is a new status update, not a UI restoration
+        if (!skipLogging) {
+            addStatusToLog(status);
+        }
+    }
+    
+    async function addStatusToLog(status) {
         const timestamp = new Date().toLocaleTimeString();
+        const currentVideoId = getCurrentVideoId();
+        
+        if (!currentVideoId) return;
+        
+        try {
+            // Get existing logs from Chrome storage
+            const logKey = `statusLog_${currentVideoId}`;
+            const result = await chrome.storage.local.get([logKey]);
+            let logs = result[logKey] || [];
+            
+            // Add new log entry
+            logs.push({
+                timestamp: timestamp,
+                status: status,
+                time: Date.now()
+            });
+            
+            // Keep only last 20 entries per video
+            if (logs.length > 20) {
+                logs = logs.slice(-20);
+            }
+            
+            // Save back to Chrome storage
+            await chrome.storage.local.set({ [logKey]: logs });
+            
+            // Update the UI
+            displayStatusLog(logs);
+        } catch (error) {
+            console.error('Failed to add status to log:', error);
+        }
+    }
+    
+    function displayStatusLog(logs) {
         const statusLog = document.getElementById('statusLog');
-        if (statusLog) {
-            statusLog.innerHTML += `<div class="status-entry">[${timestamp}] ${status}</div>`;
+        if (statusLog && logs) {
+            statusLog.innerHTML = logs.map(log => 
+                `<div class="status-entry">[${log.timestamp}] ${log.status}</div>`
+            ).join('');
             statusLog.scrollTop = statusLog.scrollHeight;
         }
     }
+    
+    async function loadStatusLog(videoId) {
+        try {
+            const logKey = `statusLog_${videoId}`;
+            const result = await chrome.storage.local.get([logKey]);
+            const logs = result[logKey] || [];
+            if (logs.length > 0) {
+                displayStatusLog(logs);
+            }
+        } catch (error) {
+            console.error('Failed to load status log:', error);
+        }
+    }
 
-    function displayResult(summary) {
+    function displayResult(summary, cached = false) {
         summaryResultDiv.innerHTML = `
             <div class="summary-container">
-                <h3>📋 Summary</h3>
+                <h3>📋 Summary ${cached ? '<small style="opacity: 0.7;">(cached)</small>' : ''}</h3>
                 <div class="summary-content">
                     ${summary.replace(/\n/g, '<br>')}
                 </div>

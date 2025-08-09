@@ -282,10 +282,13 @@ Title: {video_title}
 {transcript}
 
 Format:
-**Summary:** (2-3 sentences)
-**Key Points:** (3-5 bullets)
-**Main Takeaway:** (1 sentence)
+**Summary:**
+**Key Points:**
+**Main Takeaway:**
 
+Summary should be 2-3 sentences.
+Key Points should be 3-5 bullets.
+Main Takeaway should be 1 sentence.
 Focus on the most important information only."""
         
         # Prepare request payload for Ollama API
@@ -298,7 +301,7 @@ Focus on the most important information only."""
                 "temperature": 0.1,  # Low for consistency, faster than 0.0
                 "top_p": 0.8,        # Slightly lower for faster sampling
                 "top_k": 15,         # Smaller vocabulary for speed                   
-                "num_predict": 400   # Shorter responses = faster generation
+                "num_predict": 500   # Shorter responses = faster generation
             }
         }
         
