@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const statusDiv = document.getElementById('status');
     const summaryResultDiv = document.getElementById('summaryResult');
     const videoInfoDiv = document.getElementById('videoInfo');
-
+    const progressBar = document.getElementById('progressBar');
     const progressText = document.getElementById('progressText');
 
     // Get video info from content script with retry logic
@@ -103,18 +103,25 @@ document.addEventListener('DOMContentLoaded', function() {
         summarizeBtn.innerHTML = '<span class="loading-spinner"></span>Processing...';
         summaryResultDiv.innerHTML = ''; // Clear previous summary
         statusDiv.style.display = 'block';
+        progressBar.style.display = 'block';
         
         try {
             // Get video info and send to background script
             updateProgress('🔍 Getting video information...');
             const videoInfo = await getVideoInfoWithRetry();
             
+            // Start the processing with status updates
+            updateProgress('📥 Downloading audio...');
+            
             chrome.runtime.sendMessage({
                 action: 'summarizeVideo',
                 videoInfo: videoInfo
             }, function(result) {
                 if (result && result.success) {
-                    displayResult(result.summary);
+                    updateProgress('✅ Summarization successful!');
+                    setTimeout(() => {
+                        displayResult(result.summary);
+                    }, 1000); // Show success message briefly before showing result
                 } else {
                     displayError(result ? result.error : 'Unknown error occurred');
                     updateProgress('❌ Failed to generate summary');
@@ -122,9 +129,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 summarizeBtn.disabled = false;
                 summarizeBtn.innerHTML = '🚀 Generate Summary';
             });
+            
+            // Simulate realistic processing steps with timing
+            setTimeout(() => updateProgress('🎵 Transcribing audio...'), 3000);
+            setTimeout(() => updateProgress('🤖 Summarizing with Gemini AI...'), 12000);
         } catch (error) {
             displayError(error);
-            updateProgress('❌ Failed to get video info');
+            updateProgress('❌ Failed to process video');
             summarizeBtn.disabled = false;
             summarizeBtn.innerHTML = '🚀 Generate Summary';
         }
@@ -133,7 +144,16 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateProgress(status) {
         progressText.textContent = status;
         
-
+        // Update progress bar based on status
+        let progress = 0;
+        if (status.includes('Getting video information')) progress = 15;
+        else if (status.includes('Downloading audio')) progress = 30;
+        else if (status.includes('Transcribing audio')) progress = 60;
+        else if (status.includes('Summarizing with Gemini')) progress = 85;
+        else if (status.includes('Summarization successful')) progress = 100;
+        else if (status.includes('Failed') || status.includes('Error')) progress = 0;
+        
+        progressBar.value = progress;
         
         // Add status to log
         const timestamp = new Date().toLocaleTimeString();
