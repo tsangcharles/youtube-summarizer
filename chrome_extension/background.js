@@ -53,7 +53,7 @@ async function handleVideoSummarization(videoInfo, sendResponse) {
         throw new Error('Connection failed. Please try again.');
       } else if (error.message.includes('API key')) {
         updateStatus('❌ Invalid API key. Check your .env file.');
-        throw new Error('Invalid Gemini API key. Please check your .env file.');
+        throw new Error('Ollama connection failed. Please check your .env file.');
       } else if (error.message.includes('403')) {
         updateStatus('❌ YouTube access denied. Retrying...');
         throw new Error('YouTube temporarily blocked the request. Please try again.');

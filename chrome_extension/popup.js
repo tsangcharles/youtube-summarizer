@@ -204,7 +204,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Simulate realistic processing steps with timing
             setTimeout(() => updateProgress('🎵 Transcribing audio...'), 3000);
-            setTimeout(() => updateProgress('🤖 Summarizing with Gemini AI...'), 12000);
+            setTimeout(() => updateProgress('🤖 Summarizing with Llama AI...'), 12000);
         } catch (error) {
             displayError(error);
             updateProgress('❌ Failed to process video');
@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (status.includes('Getting video information')) progress = 15;
         else if (status.includes('Downloading audio')) progress = 30;
         else if (status.includes('Transcribing audio')) progress = 60;
-        else if (status.includes('Summarizing with Gemini')) progress = 85;
+        else if (status.includes('Summarizing with Llama')) progress = 85;
         else if (status.includes('Summarization successful')) progress = 100;
         else if (status.includes('Failed') || status.includes('Error')) progress = 0;
         
@@ -282,7 +282,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <li>Make sure you're on a YouTube video page</li>
                         <li>Refresh the page and try again</li>
                         <li>Make sure the application is running</li>
-                        <li>Check your Gemini API key in the .env file</li>
+                        <li>Make sure your Llama server is running on localhost:11434</li>
                     </ul>
                 </div>
             </div>

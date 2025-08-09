@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements_server.txt
 
 # Copy application files
 COPY server.py .
-COPY summarize_youtube_gemini.py .
+COPY summarize_youtube_llama.py .
 COPY gunicorn.conf.py .
 
 # Create temp directory for audio files
