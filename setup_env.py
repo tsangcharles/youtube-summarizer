@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Setup script for YouTube Summarizer
-Helps users create their .env file with the required API key.
+Helps users create their .env file with the required Llama configuration.
 """
 
 import os
@@ -19,45 +19,59 @@ def main():
             print("Setup cancelled.")
             return
     
-    print("\n📝 You need a Gemini API key from Google AI Studio.")
-    print("🔗 Get your free API key at: https://makersuite.google.com/app/apikey")
-    print("💡 The free tier includes 15 requests per minute.\n")
+    print("\n🦙 This application uses Ollama for local AI processing.")
+    print("🔗 Make sure you have Ollama running: https://ollama.ai")
+    print("💡 No API keys needed - everything runs locally!\n")
     
-    # Get API key from user
-    api_key = input("Enter your Gemini API key: ").strip()
+    # Get Ollama configuration from user
+    print("Ollama Configuration:")
+    llama_url = input("Enter Ollama base URL (default: http://localhost:11434): ").strip()
+    if not llama_url:
+        llama_url = "http://localhost:11434"
     
-    if not api_key:
-        print("❌ API key is required!")
-        return
-    
-    if not api_key.startswith('AIza'):
-        print("⚠️  Warning: Gemini API keys typically start with 'AIza'. Please verify your key.")
-        continue_anyway = input("Continue anyway? (y/n): ").strip().lower()
-        if continue_anyway != 'y':
-            return
+    llama_model = input("Enter Llama model name (default: llama3.2:1b): ").strip()
+    if not llama_model:
+        llama_model = "llama3.2:1b"
     
     # Create .env file
     try:
         with open('.env', 'w') as f:
-            f.write(f"GEMINI_API_KEY={api_key}\n")
+            f.write(f"# Ollama Configuration\n")
+            f.write(f"LLAMA_BASE_URL={llama_url}\n")
+            f.write(f"LLAMA_MODEL={llama_model}\n")
+            f.write(f"\n# Alternative for non-host networking:\n")
+            f.write(f"# LLAMA_BASE_URL=http://host.docker.internal:11434\n")
         
         print("\n✅ .env file created successfully!")
-        print("🔒 Your API key is now stored securely in the .env file")
-        print("📋 The .env file is ignored by git to keep your key private")
+        print("🔒 Your Ollama configuration is now stored in the .env file")
+        print("📋 The .env file can be safely committed since it contains no sensitive data")
         
         # Test the setup
-        print("\n🧪 Testing setup...")
-        os.environ['GEMINI_API_KEY'] = api_key
+        print("\n🧪 Testing Ollama connection...")
+        os.environ['LLAMA_BASE_URL'] = llama_url
+        os.environ['LLAMA_MODEL'] = llama_model
         
         try:
-            from summarize_youtube_gemini import GEMINI_API_KEY
-            print("✅ API key configuration test passed!")
+            import requests
+            response = requests.get(f"{llama_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                print("✅ Ollama connection test passed!")
+                models = response.json().get('models', [])
+                model_names = [model['name'] for model in models]
+                if llama_model in model_names:
+                    print(f"✅ Model '{llama_model}' is available!")
+                else:
+                    print(f"⚠️  Model '{llama_model}' not found. Available models: {', '.join(model_names)}")
+                    print(f"💡 Run: docker exec ollama ollama pull {llama_model}")
+            else:
+                print("❌ Ollama connection test failed!")
+                print("💡 Make sure Ollama is running: docker run -d -p 11434:11434 ollama/ollama")
         except Exception as e:
-            print(f"❌ Configuration test failed: {e}")
-            return
+            print(f"❌ Connection test failed: {e}")
+            print("💡 Make sure Ollama is running: docker run -d -p 11434:11434 ollama/ollama")
         
         print("\n🚀 Setup complete! You can now run the application.")
-        print("📖 Run 'python summarize_youtube_gemini.py' to test the summarizer")
+        print("📖 Run 'python summarize_youtube_llama.py' to test the summarizer")
         print("🐳 Or run 'docker-compose up' to start the server")
         
     except Exception as e:

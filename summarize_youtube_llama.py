@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-YouTube Video Summarizer using Whisper + Gemini
+YouTube Video Summarizer using Whisper + Llama
 Downloads YouTube videos, transcribes audio, and generates AI summaries.
 """
 
@@ -10,15 +10,15 @@ import glob
 import shutil
 import subprocess
 import numpy as np
-import google.generativeai as genai
+import requests
+import json 
 import yt_dlp
 import whisper
 from urllib.parse import urlparse, parse_qs
 
 # Configuration
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY environment variable is required. Please set it in your .env file.")
+LLAMA_BASE_URL = os.environ.get('LLAMA_BASE_URL', 'http://localhost:11434')
+LLAMA_MODEL = os.environ.get('LLAMA_MODEL', 'llama2')  # Default model, can be overridden
 
 # FFmpeg path for Docker environment
 FFMPEG_PATH = "ffmpeg"
@@ -229,61 +229,81 @@ def get_transcript_with_whisper(url, video_id, status_callback=None):
         print(f"❌ Error in speech-to-text process: {e}")
         return None
 
-def summarize_with_gemini(transcript, video_title=""):
-    """Use Gemini to summarize the transcript"""
+def summarize_with_llama(transcript, video_title=""):
+    """Use local Llama model to summarize the transcript"""
     try:
-        print("🔑 Configuring fresh Gemini AI client...")
-        # Configure fresh client for each request to avoid context contamination
-        genai.configure(api_key=GEMINI_API_KEY)
-        
-        # Create a completely new model instance
-        model = genai.GenerativeModel(
-            'gemini-2.5-flash',
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.7,  # Fresh generation parameters
-                max_output_tokens=2048,
-                top_p=0.8,
-                top_k=40
-            )
-        )
+        print("🔑 Connecting to local Llama model...")
         
         print("📝 Creating fresh summary prompt...")
         # Add unique identifier to ensure fresh context
         import time
         session_id = str(int(time.time() * 1000))[-6:]  # Last 6 digits of timestamp
         
-        prompt = f"""
-        [Session: {session_id}] Create a brief, concise summary of this YouTube video transcript.
+        prompt = f"""[Session: {session_id}] Create a brief, concise summary of this YouTube video transcript.
+
+Video Title: {video_title}
+
+Transcript:
+{transcript}
+
+Provide a summary in this format:
+
+**Summary:** (2-3 sentences max)
+
+**Key Points:** (3-5 bullet points)
+
+**Main Takeaway:** (1 sentence)
+
+Keep it short and to the point. Focus on the most important information only.
+Ignore any previous conversations or context - analyze only this specific transcript."""
         
-        Video Title: {video_title}
+        # Prepare request payload for Ollama API
+        payload = {
+            "model": LLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.7,
+                "top_p": 0.8,
+                "top_k": 40,
+                "num_predict": 2048
+            }
+        }
         
-        Transcript:
-        {transcript}
+        print(f"🤖 Generating summary with Llama model ({LLAMA_MODEL})...")
         
-        Provide a summary in this format:
+        # Make request to Ollama API
+        response = requests.post(
+            f"{LLAMA_BASE_URL}/api/generate",
+            json=payload,
+            timeout=300  # 5 minute timeout for generation
+        )
         
-        **Summary:** (2-3 sentences max)
-        
-        **Key Points:** (3-5 bullet points)
-        
-        **Main Takeaway:** (1 sentence)
-        
-        Keep it short and to the point. Focus on the most important information only.
-        Ignore any previous conversations or context - analyze only this specific transcript.
-        """
-        
-        print("🤖 Generating summary with Gemini AI...")
-        response = model.generate_content(prompt)
-        print("✅ Summary generated successfully!")
-        return response.text
+        if response.status_code == 200:
+            result = response.json()
+            summary = result.get('response', '').strip()
+            
+            if summary:
+                print("✅ Summary generated successfully!")
+                return summary
+            else:
+                print("❌ Empty response from Llama model")
+                return None
+        else:
+            print(f"❌ Llama API error: {response.status_code} - {response.text}")
+            return None
     
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Connection error to Llama server: {e}")
+        print("Make sure Ollama is running on localhost:11434")
+        return None
     except Exception as e:
         print(f"❌ Error generating summary: {e}")
         return None
 
 def main():
     """Main function for command-line usage"""
-    print("YouTube Video Summarizer using Speech-to-Text + Gemini")
+    print("YouTube Video Summarizer using Speech-to-Text + Llama")
     print("=" * 60)
     
     while True:
@@ -313,8 +333,8 @@ def main():
         
         print(f"Transcript length: {len(transcript)} characters")
         
-        print("Generating summary with Gemini...")
-        summary = summarize_with_gemini(transcript, video_title)
+        print("Generating summary with Llama...")
+        summary = summarize_with_llama(transcript, video_title)
         
         if summary:
             print("\n" + "=" * 60)

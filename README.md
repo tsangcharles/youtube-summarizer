@@ -1,6 +1,6 @@
 # 🎥 YouTube Video Summarizer
 
-A powerful Chrome extension that automatically summarizes YouTube videos using AI (Whisper + Gemini). Downloads video audio, transcribes it with Whisper, and generates concise summaries using Google's Gemini AI.
+A powerful Chrome extension that automatically summarizes YouTube videos using AI (Whisper + Llama). Downloads video audio, transcribes it with Whisper, and generates concise summaries using Ollama's Llama models.
 
 ## 📁 Project Structure
 
@@ -15,33 +15,48 @@ youtube_summary/
 │   ├── icons/               # Extension icons
 │   └── README.md            # Extension setup guide
 ├── server.py                # 🚀 Flask backend server
-├── summarize_youtube_gemini.py # 🤖 Core AI logic
+├── summarize_youtube_llama.py # 🤖 Core AI logic (Whisper + Llama)
 ├── requirements_server.txt  # 📦 Python dependencies
 ├── Dockerfile              # 🐳 Docker configuration
 ├── docker-compose.yml      # 🐳 Docker Compose setup
-├── env.example             # 📝 Environment variables template
 └── README.md               # 📖 This file
 ```
 
 ## 🚀 Quick Start
 
-### 1. Setup Environment Variables
+### 1. Setup Ollama Docker Container
+
+First, run the Ollama Docker container:
+
+```bash
+# For CPU-only setup:
+docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+
+# For NVIDIA GPU setup:
+docker run -d --gpus=all -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+```
+
+Next, download the Llama model (this runs in the background):
+
+```bash
+# Download and setup the llama3.2:1b model
+docker exec ollama ollama pull llama3.2:1b
+```
+
+**📝 Note:** The model download happens automatically and the container runs in the background. No need for interactive terminal sessions.
+
+### 2. Setup Environment Variables
 ```bash
 # Option 1: Use the setup script (recommended)
 python setup_env.py
 
 # Option 2: Manual setup
-# Copy the example environment file
-cp env.example .env
-
-# Edit .env and add your Gemini API key
-# Replace "your-gemini-api-key-here" with your actual API key
-# GEMINI_API_KEY=your-actual-api-key-here
+# Create .env file with Ollama configuration
+echo "LLAMA_BASE_URL=http://localhost:11434" > .env
+echo "LLAMA_MODEL=llama3.2:1b" >> .env
 ```
 
-**📝 Note:** You need a Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey). The free tier includes 15 requests per minute.
-
-### 2. Start Server with Docker
+### 3. Start Server with Docker
 ```bash
 # Build and start the server
 docker compose up -d
@@ -50,14 +65,14 @@ docker compose up -d
 curl http://localhost:5000/health
 ```
 
-### 3. Install Chrome Extension
+### 4. Install Chrome Extension
 1. Open Chrome and go to `chrome://extensions/`
 2. Enable "Developer mode" (toggle in top right)
 3. Click "Load unpacked"
 4. Select the `chrome_extension` folder from this project
 5. The extension icon should appear in your toolbar
 
-### 4. Use the Extension
+### 5. Use the Extension
 1. Go to any YouTube video
 2. Click the extension icon in your toolbar
 3. Click "Generate Summary"
@@ -66,6 +81,7 @@ curl http://localhost:5000/health
 
 ## 🐳 Docker Commands
 
+### YouTube Summarizer Server
 ```bash
 # Start the server
 docker compose up -d
@@ -86,11 +102,32 @@ docker compose up -d --build
 curl http://localhost:5000/health
 ```
 
+### Ollama Container Management
+```bash
+# Check if Ollama is running
+docker ps | grep ollama
+
+# Start Ollama container (if stopped)
+docker start ollama
+
+# Stop Ollama container
+docker stop ollama
+
+# View available models
+docker exec ollama ollama list
+
+# Download additional models
+docker exec ollama ollama pull llama3.2:3b
+
+# Test Ollama API
+curl http://localhost:11434/api/tags
+```
+
 ## ✨ Features
 
 - **One-click summarization** - No URL copying needed
 - **Auto video detection** - Works on any YouTube page
-- **AI-powered summaries** - Whisper + Gemini
+- **AI-powered summaries** - Whisper + Llama
 - **Beautiful UI** - Modern, intuitive interface
 - **Docker deployment** - Easy setup and management
 - **Real-time progress** - See processing status
@@ -99,15 +136,15 @@ curl http://localhost:5000/health
 
 ## 🔧 Requirements
 
-- **Docker Desktop** - For running the server
+- **Docker Desktop** - For running Ollama and the server
 - **Chrome browser** - For the extension
-- **Gemini API key** - From Google AI Studio
+- **Ollama** - For running Llama models locally
 
 ## 🛠️ Development
 
 ### **Backend:** Flask server with async processing
 ### **Frontend:** Chrome extension with modern UI
-### **AI:** Whisper for transcription, Gemini for summarization
+### **AI:** Whisper for transcription, Llama for summarization
 ### **Deployment:** Docker containerization
 
 ## 🔧 Troubleshooting
@@ -126,10 +163,11 @@ docker compose logs
 2. Check if Docker container is up: `docker compose ps`
 3. Restart the container: `docker compose restart`
 
-### **API key issues:**
-1. Make sure your `.env` file has the correct API key
-2. Check Docker logs for API errors: `docker compose logs`
-3. Verify your Gemini API key is valid and has quota
+### **Ollama connection issues:**
+1. Make sure Ollama container is running: `docker ps | grep ollama`
+2. Check if Ollama is accessible: `curl http://localhost:11434/api/tags`
+3. Verify the model is downloaded: `docker exec ollama ollama list`
+4. Check your `.env` file has correct LLAMA_BASE_URL and LLAMA_MODEL
 
 ### **Audio download issues:**
 - The server automatically handles YouTube's anti-bot measures
@@ -148,8 +186,8 @@ docker compose logs
 
 ## 🔒 Security
 
-- **No API keys in browser** - All processing happens server-side
-- **Environment variables** - Secure API key management
+- **Local processing** - All AI inference happens locally with Ollama
+- **No external API calls** - Everything runs on your machine
 - **CORS enabled** - Safe cross-origin requests
 - **Automatic cleanup** - No sensitive data left behind
 
@@ -158,7 +196,7 @@ docker compose logs
 1. **Video Detection** - Extension detects YouTube video on current page
 2. **Audio Download** - Server downloads video audio using yt-dlp
 3. **Transcription** - Whisper AI converts audio to text
-4. **Summarization** - Gemini AI creates concise summary
+4. **Summarization** - Llama AI creates concise summary
 5. **Display** - Results shown in extension popup
 
 ## 📝 License
