@@ -14,6 +14,7 @@ import requests
 import json 
 import yt_dlp
 import whisper
+import torch
 from urllib.parse import urlparse, parse_qs
 
 # Configuration
@@ -140,24 +141,28 @@ def load_audio_with_ffmpeg(audio_file):
     return audio_data
 
 def transcribe_audio(audio_file):
-    """Transcribe audio using Whisper"""
+    """Transcribe audio using Whisper with GPU acceleration"""
     try:
         if not os.path.exists(audio_file):
             print(f"❌ Audio file not found: {audio_file}")
             return None
         
+        # Check for CUDA availability
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"🚀 Using device: {device}")
+        
         # Load Whisper model fresh for each request
         print("🤖 Loading Whisper model...")
-        model = whisper.load_model("tiny")
+        model = whisper.load_model("base", device=device)
         
         # Load audio and transcribe
         audio_data = load_audio_with_ffmpeg(audio_file)
         
         print("🎵 Transcribing audio data...")
-        # Add parameters to ensure fresh transcription
+        # Add parameters to ensure fresh transcription with GPU optimization
         result = model.transcribe(
             audio_data, 
-            fp16=False, 
+            fp16=torch.cuda.is_available(),  # Use fp16 only if CUDA is available
             verbose=False,
             temperature=0.0,
             no_speech_threshold=0.6
