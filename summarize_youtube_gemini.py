@@ -29,12 +29,14 @@ YOUTUBE_PATTERNS = [
     r'youtube\.com\/watch\?.*v=([^&\n?#]+)'
 ]
 
-# yt-dlp configuration
+# yt-dlp configuration with more flexible format selection
 YDL_OPTS = {
-    'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
+    'format': 'bestaudio/best[height<=480]/worst',
     'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     'extractor_retries': 3,
     'retries': 3,
+    'extract_flat': False,
+    'no_warnings': False,
 }
 
 def extract_video_id(url):
@@ -72,12 +74,33 @@ def get_video_info(url):
 def download_audio(url, video_id):
     """Download audio from YouTube video"""
     try:
-        ydl_opts = YDL_OPTS.copy()
-        ydl_opts['outtmpl'] = f'{video_id}.%(ext)s'
+        # Clean up any existing audio files first to prevent confusion
+        cleanup_audio_files(video_id)
         
-        print(f"📥 Downloading audio for video ID: {video_id}")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        # Try multiple format configurations for better compatibility
+        format_options = [
+            'bestaudio/best[height<=480]/worst',  # Primary option
+            'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',  # Specific audio formats
+            'best[height<=360]/worst',  # Lower quality fallback
+            'worst'  # Last resort
+        ]
+        
+        for i, format_option in enumerate(format_options):
+            try:
+                ydl_opts = YDL_OPTS.copy()
+                ydl_opts['outtmpl'] = f'{video_id}.%(ext)s'
+                ydl_opts['format'] = format_option
+                
+                print(f"📥 Downloading audio for video ID: {video_id} (attempt {i+1})")
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+                break  # Success, exit the loop
+                
+            except Exception as format_error:
+                print(f"Format '{format_option}' failed: {format_error}")
+                if i == len(format_options) - 1:  # Last attempt
+                    raise format_error
+                continue
         
         # Find downloaded file
         patterns = [f'{video_id}.*', f'{video_id}.*.m4a', f'{video_id}.*.webm', f'{video_id}.*.mp3', f'{video_id}.*.mp4']
@@ -89,15 +112,7 @@ def download_audio(url, video_id):
                 print(f"✅ Audio file downloaded successfully: {audio_file}")
                 return audio_file
         
-        # Fallback: find most recent audio file
-        print("🔍 No audio file found with video ID pattern, searching for recent audio files...")
-        all_audio_files = glob.glob("*.m4a") + glob.glob("*.webm") + glob.glob("*.mp3") + glob.glob("*.mp4")
-        if all_audio_files:
-            latest_file = max(all_audio_files, key=os.path.getmtime)
-            print(f"✅ Found recent audio file: {latest_file}")
-            return latest_file
-        
-        print("❌ No audio file found after download")
+        print("❌ No audio file found with video ID pattern")
         return None
     
     except Exception as e:
@@ -137,7 +152,7 @@ def transcribe_audio(audio_file):
         file_size = os.path.getsize(audio_file)
         print(f"📁 Audio file found: {audio_file} (size: {file_size} bytes)")
         
-        # Load Whisper model
+        # Load Whisper model fresh for each request
         print("🤖 Loading Whisper model...")
         model = whisper.load_model("tiny")
         
@@ -145,7 +160,14 @@ def transcribe_audio(audio_file):
         audio_data = load_audio_with_ffmpeg(audio_file)
         
         print("🎵 Transcribing audio data...")
-        result = model.transcribe(audio_data, fp16=False, verbose=True)
+        # Add parameters to ensure fresh transcription
+        result = model.transcribe(
+            audio_data, 
+            fp16=False, 
+            verbose=True,
+            temperature=0.0,
+            no_speech_threshold=0.6
+        )
         
         print("✅ Transcription completed successfully!")
         return result["text"]
@@ -163,9 +185,10 @@ def cleanup_audio_files(video_id):
         for ext in audio_extensions:
             files = glob.glob(ext)
             for file in files:
-                if video_id not in file and os.path.exists(file):
+                # Remove ALL audio files to prevent cross-contamination
+                if os.path.exists(file):
                     try:
-                        print(f"Cleaning up leftover audio file: {file}")
+                        print(f"Cleaning up audio file: {file}")
                         os.remove(file)
                     except Exception as e:
                         print(f"Could not remove {file}: {e}")
@@ -209,13 +232,28 @@ def get_transcript_with_whisper(url, video_id, status_callback=None):
 def summarize_with_gemini(transcript, video_title=""):
     """Use Gemini to summarize the transcript"""
     try:
-        print("🔑 Configuring Gemini AI...")
+        print("🔑 Configuring fresh Gemini AI client...")
+        # Configure fresh client for each request to avoid context contamination
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-2.5-flash')
         
-        print("📝 Creating summary prompt...")
+        # Create a completely new model instance
+        model = genai.GenerativeModel(
+            'gemini-2.5-flash',
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.7,  # Fresh generation parameters
+                max_output_tokens=2048,
+                top_p=0.8,
+                top_k=40
+            )
+        )
+        
+        print("📝 Creating fresh summary prompt...")
+        # Add unique identifier to ensure fresh context
+        import time
+        session_id = str(int(time.time() * 1000))[-6:]  # Last 6 digits of timestamp
+        
         prompt = f"""
-        Create a brief, concise summary of this YouTube video transcript.
+        [Session: {session_id}] Create a brief, concise summary of this YouTube video transcript.
         
         Video Title: {video_title}
         
@@ -230,7 +268,8 @@ def summarize_with_gemini(transcript, video_title=""):
         
         **Main Takeaway:** (1 sentence)
         
-       Keep it short and to the point. Focus on the most important information only.
+        Keep it short and to the point. Focus on the most important information only.
+        Ignore any previous conversations or context - analyze only this specific transcript.
         """
         
         print("🤖 Generating summary with Gemini AI...")

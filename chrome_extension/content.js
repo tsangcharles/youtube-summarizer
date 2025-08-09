@@ -102,16 +102,15 @@ function extractVideoInfo() {
       }
     }
 
-    // Method 6: Wait for dynamic content if title is still not found
+    // Method 6: Fallback to video ID if no title found
     if (!title) {
-      console.log('⏳ Title not found, waiting for dynamic content...');
-      // This will be handled by the popup retrying
-      return null;
+      console.log('⚠️ Title not found, using fallback...');
+      title = `YouTube Video ${videoId}`;
     }
 
     const result = {
       videoId: videoId,
-      title: title || `Video ${videoId}`,
+      title: title,
       url: window.location.href
     };
     
@@ -131,6 +130,9 @@ function autoExtractVideoInfo() {
   if (window.location.hostname.includes('youtube.com') && 
       window.location.pathname.includes('/watch')) {
     
+    // Clear any cached video info first
+    sessionStorage.removeItem('youtubeSummarizer_videoInfo');
+    
     // Wait a bit for the page to fully load
     setTimeout(() => {
       const videoInfo = extractVideoInfo();
@@ -140,6 +142,9 @@ function autoExtractVideoInfo() {
         console.log('💾 Stored video info in session storage');
       }
     }, 1000);
+  } else {
+    // If not on a video page, clear cached info
+    sessionStorage.removeItem('youtubeSummarizer_videoInfo');
   }
 }
 

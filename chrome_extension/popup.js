@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const progressText = document.getElementById('progressText');
 
     // Get video info from content script with retry logic
-    function getVideoInfoWithRetry(maxRetries = 3) {
+    function getVideoInfoWithRetry(maxRetries = 5) {
         return new Promise((resolve, reject) => {
             let attempts = 0;
             
@@ -23,15 +23,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
                     
+                    // Check if we're on a YouTube video page first
+                    const url = tabs[0].url;
+                    if (!url || !url.includes('youtube.com/watch')) {
+                        reject('Not on a YouTube video page');
+                        return;
+                    }
+                    
                     chrome.tabs.sendMessage(tabs[0].id, {action: 'getVideoInfo'}, function(response) {
                         console.log('📨 Response from content script:', response);
                         
                         if (chrome.runtime.lastError) {
                             console.log('❌ Runtime error:', chrome.runtime.lastError);
                             if (attempts < maxRetries) {
-                                setTimeout(attempt, 1000);
+                                setTimeout(attempt, 500);
                             } else {
-                                reject('Content script not responding');
+                                reject('Content script not responding. Please refresh the page.');
                             }
                             return;
                         }
@@ -40,17 +47,17 @@ document.addEventListener('DOMContentLoaded', function() {
                             resolve(response.videoInfo);
                         } else if (response && !response.success) {
                             if (attempts < maxRetries) {
-                                console.log(`⏳ Retrying in 1 second... (${attempts}/${maxRetries})`);
-                                setTimeout(attempt, 1000);
+                                console.log(`⏳ Retrying in 0.5 seconds... (${attempts}/${maxRetries})`);
+                                setTimeout(attempt, 500);
                             } else {
                                 reject(response.error || 'Could not get video information');
                             }
                         } else {
                             if (attempts < maxRetries) {
-                                console.log(`⏳ No response, retrying in 1 second... (${attempts}/${maxRetries})`);
-                                setTimeout(attempt, 1000);
+                                console.log(`⏳ No response, retrying in 0.5 seconds... (${attempts}/${maxRetries})`);
+                                setTimeout(attempt, 500);
                             } else {
-                                reject('Could not get video information. Make sure you are on a YouTube video page.');
+                                reject('Could not get video information. Please refresh the page.');
                             }
                         }
                     });
@@ -65,14 +72,76 @@ document.addEventListener('DOMContentLoaded', function() {
     async function initializePopup() {
         try {
             updateProgress('🔍 Detecting video...');
-            const videoInfo = await getVideoInfoWithRetry();
-            displayVideoInfo(videoInfo);
-            updateProgress('✅ Video detected successfully!');
+            
+            // Try to get video info from current tab URL first (fastest method)
+            const videoInfo = await getVideoInfoFromURL();
+            
+            if (videoInfo && videoInfo.videoId) {
+                // Check if this is a different video than last time
+                const lastVideoId = localStorage.getItem('lastVideoId');
+                if (lastVideoId && lastVideoId !== videoInfo.videoId) {
+                    // Clear any previous results if video changed
+                    summaryResultDiv.innerHTML = '';
+                }
+                
+                displayVideoInfo(videoInfo);
+                updateProgress('✅ Video detected successfully!');
+            } else {
+                throw new Error('Not on a YouTube video page');
+            }
         } catch (error) {
             console.error('❌ Error initializing popup:', error);
-            displayError(error);
+            displayError(error.message);
             updateProgress('❌ Failed to detect video');
         }
+    }
+
+    // Get video info directly from URL (faster, more reliable)
+    async function getVideoInfoFromURL() {
+        return new Promise((resolve, reject) => {
+            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+                if (!tabs[0]) {
+                    reject(new Error('No active tab found'));
+                    return;
+                }
+                
+                const url = tabs[0].url;
+                const title = tabs[0].title;
+                
+                console.log('Tab URL:', url);
+                console.log('Tab Title:', title);
+                
+                // Check if we're on a YouTube video page
+                if (!url || !url.includes('youtube.com/watch')) {
+                    reject(new Error('Not on a YouTube video page'));
+                    return;
+                }
+                
+                // Extract video ID from URL
+                const urlParams = new URL(url).searchParams;
+                const videoId = urlParams.get('v');
+                
+                if (!videoId) {
+                    reject(new Error('No video ID found in URL'));
+                    return;
+                }
+                
+                // Clean up the title
+                let cleanTitle = title.replace(' - YouTube', '').trim();
+                if (!cleanTitle || cleanTitle === 'YouTube') {
+                    cleanTitle = `YouTube Video ${videoId}`;
+                }
+                
+                const videoInfo = {
+                    videoId: videoId,
+                    title: cleanTitle,
+                    url: url
+                };
+                
+                console.log('✅ Video info from URL:', videoInfo);
+                resolve(videoInfo);
+            });
+        });
     }
 
     // Listen for status updates from background script
@@ -95,6 +164,9 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
         summarizeBtn.disabled = false;
         summarizeBtn.innerHTML = '🚀 Generate Summary';
+        
+        // Store current video ID to detect changes
+        localStorage.setItem('lastVideoId', videoInfo.videoId);
     }
 
     async function startSummarization() {
@@ -108,9 +180,9 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             // Get video info and send to background script
             updateProgress('🔍 Getting video information...');
-            const videoInfo = await getVideoInfoWithRetry();
+            const videoInfo = await getVideoInfoFromURL();
             
-            // Start the processing with status updates
+            // Start the processing with status updates  
             updateProgress('📥 Downloading audio...');
             
             chrome.runtime.sendMessage({
