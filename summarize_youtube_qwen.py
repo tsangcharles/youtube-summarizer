@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-YouTube Video Summarizer using Whisper + Llama
+YouTube Video Summarizer using Whisper + Qwen3
 Downloads YouTube videos, transcribes audio, and generates AI summaries.
 """
 
@@ -18,8 +18,8 @@ import torch
 from urllib.parse import urlparse, parse_qs
 
 # Configuration
-LLAMA_BASE_URL = os.environ.get('LLAMA_BASE_URL', 'http://localhost:11434')
-LLAMA_MODEL = os.environ.get('LLAMA_MODEL', 'llama3.2:1b')  # Default model, can be overridden
+QWEN_BASE_URL = os.environ.get('QWEN_BASE_URL', 'http://localhost:11434')
+QWEN_MODEL = os.environ.get('QWEN_MODEL', 'qwen3:0.6b')  # Default model, can be overridden
 
 # Global Whisper model instance (loaded once, reused many times)
 _whisper_model = None
@@ -268,10 +268,10 @@ def get_transcript_with_whisper(url, video_id, status_callback=None):
 
 
 
-def summarize_with_llama(transcript, video_title=""):
-    """Use local Llama model to summarize the transcript"""
+def summarize_with_qwen(transcript, video_title=""):
+    """Use local Qwen3 model to summarize the transcript"""
     try:
-        print("🔑 Connecting to local Llama model...")
+        print("🔑 Connecting to local Qwen3 model...")
         
         print("📝 Creating optimized summary prompt...")
         
@@ -290,9 +290,10 @@ Focus on the most important information only."""
         
         # Prepare request payload for Ollama API
         payload = {
-            "model": LLAMA_MODEL,
+            "model": QWEN_MODEL,
             "prompt": prompt,
             "stream": False,
+            "think": False,
             "options": {
                 "temperature": 0.1,  # Low for consistency, faster than 0.0
                 "top_p": 0.8,        # Slightly lower for faster sampling
@@ -301,11 +302,11 @@ Focus on the most important information only."""
             }
         }
         
-        print(f"🤖 Generating summary with Llama model ({LLAMA_MODEL})...")
+        print(f"🤖 Generating summary with Qwen3 model ({QWEN_MODEL})...")
         
         # Make request to Ollama API
         response = requests.post(
-            f"{LLAMA_BASE_URL}/api/generate",
+            f"{QWEN_BASE_URL}/api/generate",
             json=payload,
             timeout=600  # 10 minute timeout for generation
         )
@@ -318,14 +319,14 @@ Focus on the most important information only."""
                 print("✅ Summary generated successfully!")
                 return summary
             else:
-                print("❌ Empty response from Llama model")
+                print("❌ Empty response from Qwen3 model")
                 return None
         else:
-            print(f"❌ Llama API error: {response.status_code} - {response.text}")
+            print(f"❌ Qwen3 API error: {response.status_code} - {response.text}")
             return None
     
     except requests.exceptions.RequestException as e:
-        print(f"❌ Connection error to Llama server: {e}")
+        print(f"❌ Connection error to Qwen3 server: {e}")
         print("Make sure Ollama is running on localhost:11434")
         return None
     except Exception as e:
@@ -334,7 +335,7 @@ Focus on the most important information only."""
 
 def main():
     """Main function for command-line usage"""
-    print("YouTube Video Summarizer using Speech-to-Text + Llama")
+    print("YouTube Video Summarizer using Speech-to-Text + Qwen3")
     print("=" * 60)
     
     while True:
@@ -364,8 +365,8 @@ def main():
         
         print(f"Transcript length: {len(transcript)} characters")
         
-        print("Generating summary with Llama...")
-        summary = summarize_with_llama(transcript, video_title)
+        print("Generating summary with Qwen3...")
+        summary = summarize_with_qwen(transcript, video_title)
         
         if summary:
             print("\n" + "=" * 60)
