@@ -213,7 +213,14 @@ def get_transcript_with_whisper(url, video_id, status_callback=None):
         transcript = transcribe_audio(audio_file)
         
         if status_callback:
-            status_callback('Transcription completed, cleaning up...')
+            status_callback('Transcription completed, processing transcript...')
+        
+        # Process transcript to remove timestamps and clean up
+        if transcript:
+            transcript = process_transcript(transcript)
+        
+        if status_callback:
+            status_callback('Transcript processing completed, cleaning up...')
         
         # Clean up audio file
         if os.path.exists(audio_file):
@@ -229,33 +236,65 @@ def get_transcript_with_whisper(url, video_id, status_callback=None):
         print(f"❌ Error in speech-to-text process: {e}")
         return None
 
+def process_transcript(transcript):
+    """Clean and process transcript by removing timestamps and improving formatting"""
+    if not transcript:
+        return None
+    
+    print("📝 Processing transcript...")
+    
+    # Remove common timestamp patterns like [00:00], (00:00), 00:00:00, etc.
+    import re
+    
+    # Remove timestamps in various formats
+    patterns = [
+        r'\[\d{1,2}:\d{2}\]',           # [MM:SS]
+        r'\[\d{1,2}:\d{2}:\d{2}\]',     # [HH:MM:SS]
+        r'\(\d{1,2}:\d{2}\)',           # (MM:SS)
+        r'\(\d{1,2}:\d{2}:\d{2}\)',     # (HH:MM:SS)
+        r'\d{1,2}:\d{2}:\d{2}',         # HH:MM:SS
+        r'\d{1,2}:\d{2}',               # MM:SS
+        r'^\d{1,2}:\d{2}\s*',           # Timestamps at start of lines
+        r'^\d{1,2}:\d{2}:\d{2}\s*',     # HH:MM:SS at start of lines
+    ]
+    
+    processed_transcript = transcript
+    for pattern in patterns:
+        processed_transcript = re.sub(pattern, '', processed_transcript)
+    
+    # Clean up extra whitespace and normalize
+    processed_transcript = re.sub(r'\s+', ' ', processed_transcript)  # Multiple spaces to single
+    processed_transcript = re.sub(r'\n\s*\n', '\n', processed_transcript)  # Multiple newlines
+    processed_transcript = processed_transcript.strip()
+    
+    # Remove common filler words and artifacts
+    processed_transcript = re.sub(r'\b(um|uh|er|ah)\b', '', processed_transcript, flags=re.IGNORECASE)
+    processed_transcript = re.sub(r'\s+', ' ', processed_transcript)  # Clean up spaces again
+    
+    print(f"✅ Transcript processed: {len(transcript)} chars → {len(processed_transcript)} chars")
+    print(f"📄 Processed transcript preview: {processed_transcript[:200]}...")
+    
+    return processed_transcript
+
 def summarize_with_llama(transcript, video_title=""):
     """Use local Llama model to summarize the transcript"""
     try:
         print("🔑 Connecting to local Llama model...")
         
-        print("📝 Creating fresh summary prompt...")
-        # Add unique identifier to ensure fresh context
-        import time
-        session_id = str(int(time.time() * 1000))[-6:]  # Last 6 digits of timestamp
+        print("📝 Creating optimized summary prompt...")
         
-        prompt = f"""[Session: {session_id}] Create a brief, concise summary of this YouTube video transcript.
+        prompt = f"""Summarize this YouTube video transcript concisely.
 
-Video Title: {video_title}
+Title: {video_title}
 
-Transcript:
 {transcript}
 
-Provide a summary in this format:
-
-**Summary:** (2-3 sentences max)
-
-**Key Points:** (3-5 bullet points)
-
+Format:
+**Summary:** (2-3 sentences)
+**Key Points:** (3-5 bullets)
 **Main Takeaway:** (1 sentence)
 
-Keep it short and to the point. Focus on the most important information only.
-Ignore any previous conversations or context - analyze only this specific transcript."""
+Focus on the most important information only."""
         
         # Prepare request payload for Ollama API
         payload = {
@@ -263,10 +302,10 @@ Ignore any previous conversations or context - analyze only this specific transc
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": 0.7,
-                "top_p": 0.8,
-                "top_k": 40,
-                "num_predict": 2048
+                "temperature": 0.1,  # Low for consistency, faster than 0.0
+                "top_p": 0.8,        # Slightly lower for faster sampling
+                "top_k": 15,         # Smaller vocabulary for speed                   
+                "num_predict": 400   # Shorter responses = faster generation
             }
         }
         
@@ -276,7 +315,7 @@ Ignore any previous conversations or context - analyze only this specific transc
         response = requests.post(
             f"{LLAMA_BASE_URL}/api/generate",
             json=payload,
-            timeout=300  # 5 minute timeout for generation
+            timeout=600  # 10 minute timeout for generation
         )
         
         if response.status_code == 200:

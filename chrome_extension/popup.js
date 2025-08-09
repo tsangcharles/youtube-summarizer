@@ -71,8 +71,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize popup
     async function initializePopup() {
         try {
-            updateProgress('🔍 Detecting video...');
-            
             // Try to get video info from current tab URL first (fastest method)
             const videoInfo = await getVideoInfoFromURL();
             
@@ -85,14 +83,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 displayVideoInfo(videoInfo);
-                updateProgress('✅ Video detected successfully!');
             } else {
                 throw new Error('Not on a YouTube video page');
             }
         } catch (error) {
             console.error('❌ Error initializing popup:', error);
             displayError(error.message);
-            updateProgress('❌ Failed to detect video');
         }
     }
 
@@ -179,7 +175,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         try {
             // Get video info and send to background script
-            updateProgress('🔍 Getting video information...');
             const videoInfo = await getVideoInfoFromURL();
             
             // Start the processing with status updates  
@@ -204,6 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Simulate realistic processing steps with timing
             setTimeout(() => updateProgress('🎵 Transcribing audio...'), 3000);
+            setTimeout(() => updateProgress('📝 Processing transcript...'), 10000);
             setTimeout(() => updateProgress('🤖 Summarizing with Llama AI...'), 12000);
         } catch (error) {
             displayError(error);
@@ -218,9 +214,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Update progress bar based on status
         let progress = 0;
-        if (status.includes('Getting video information')) progress = 15;
-        else if (status.includes('Downloading audio')) progress = 30;
-        else if (status.includes('Transcribing audio')) progress = 60;
+        if (status.includes('Downloading audio')) progress = 25;
+        else if (status.includes('Transcribing audio')) progress = 50;
+        else if (status.includes('Processing transcript')) progress = 70;
         else if (status.includes('Summarizing with Llama')) progress = 85;
         else if (status.includes('Summarization successful')) progress = 100;
         else if (status.includes('Failed') || status.includes('Error')) progress = 0;
