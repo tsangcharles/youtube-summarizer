@@ -210,6 +210,13 @@
             color: white;
         }
 
+        .summary-container h3 small {
+            font-size: 12px;
+            font-weight: 400;
+            opacity: 0.7;
+            margin-left: 8px;
+        }
+
         .summary-content {
             background: rgba(0, 0, 0, 0.2);
             border-radius: 6px;
@@ -219,6 +226,16 @@
             line-height: 1.5;
             max-height: 200px;
             overflow-y: auto;
+            word-wrap: break-word;
+        }
+        
+        .summary-content p {
+            margin: 0 0 8px 0;
+            padding: 0;
+        }
+        
+        .summary-content p:last-child {
+            margin-bottom: 0;
         }
 
         .summary-actions {
@@ -242,6 +259,7 @@
             background: rgba(0, 255, 0, 0.3);
             transform: translateY(-1px);
         }
+        
     </style>
 </head>
 <body>

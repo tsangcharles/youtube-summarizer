@@ -4,7 +4,7 @@
 const API_BASE_URL = 'http://localhost:5000'; // Your Python backend server
 
 // In-memory storage for active tasks and cache
-let activeTasks = new Map(); // videoId -> { status, progress, startTime }
+let activeTasks = new Map(); // videoId -> { status, progress, startTime, summary }
 let summaryCache = new Map(); // videoId -> { summary, timestamp, title }
 
 // Initialize cache from persistent storage on startup
@@ -61,7 +61,9 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     return true; // Keep the message channel open for async response
   } else if (request.action === 'getTaskStatus') {
     // Check if there's an active task or cached result for this video
+    console.log('🔍 getTaskStatus requested for video:', request.videoId);
     const status = getVideoStatus(request.videoId);
+    console.log('🔍 getTaskStatus response for video:', request.videoId, 'Status:', status);
     sendResponse(status);
   } else if (request.action === 'getCachedSummary') {
     // Get cached summary if available
@@ -70,11 +72,6 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     console.log('🔍 Current cache size:', summaryCache.size);
     console.log('🔍 Cache keys:', Array.from(summaryCache.keys()));
     sendResponse(cached || null);
-  } else if (request.action === 'debugCache') {
-    // Debug cache contents
-    const cacheContents = Object.fromEntries(summaryCache);
-    console.log('🔍 Debug cache contents:', cacheContents);
-    sendResponse({ cacheSize: summaryCache.size, cacheContents });
   }
 });
 
@@ -90,23 +87,44 @@ function getVideoStatus(videoId) {
       status: 'completed',
       summary: cached.summary,
       cached: true,
-      timestamp: cached.timestamp
+      timestamp: cached.timestamp,
+      title: cached.title
     };
   }
 
   // Check active tasks
   const activeTask = activeTasks.get(videoId);
   console.log('🔍 Active task lookup result:', activeTask ? 'FOUND' : 'NOT FOUND');
+  console.log('🔍 Active tasks map size:', activeTasks.size);
+  console.log('🔍 Active tasks keys:', Array.from(activeTasks.keys()));
   
   if (activeTask) {
+    // Provide more detailed information about ongoing tasks
+    let statusMessage = '🔄 Processing in background...';
+    if (activeTask.status === 'downloading') statusMessage = '📥 Downloading audio...';
+    else if (activeTask.status === 'transcribing') statusMessage = '🎵 Transcribing audio...';
+    else if (activeTask.status === 'summarizing') statusMessage = '🤖 Summarizing with Gemini AI...';
+    else if (activeTask.status === 'completed') statusMessage = '✅ Summarization completed!';
+    
+    console.log('🔍 Returning active task status:', {
+      status: activeTask.status,
+      progress: activeTask.progress,
+      statusMessage: statusMessage,
+      isActive: activeTask.status !== 'completed'
+    });
+    
     return {
       status: activeTask.status,
       progress: activeTask.progress,
       startTime: activeTask.startTime,
-      cached: false
+      statusMessage: statusMessage,
+      summary: activeTask.summary, // Include summary if completed
+      cached: false,
+      isActive: activeTask.status !== 'completed'
     };
   }
 
+  console.log('🔍 No active task or cache found, returning idle status');
   return { status: 'idle', cached: false };
 }
 
@@ -126,6 +144,7 @@ async function handleVideoSummarization(videoInfo, sendResponse) {
     // Check if we already have a cached result
     const cached = summaryCache.get(videoId);
     if (cached) {
+      console.log('📋 Returning cached result for video:', videoId);
       sendResponse({
         success: true,
         summary: cached.summary,
@@ -175,16 +194,20 @@ async function processVideoInBackground(videoInfo) {
     // Notify any open popups about status change
     broadcastStatusUpdate(videoId, '📥 Downloading audio...');
     
-    // Update status during processing
+    // Update status during processing with more realistic timing
     setTimeout(() => {
-      activeTasks.set(videoId, { ...activeTasks.get(videoId), status: 'transcribing', progress: 60 });
-      broadcastStatusUpdate(videoId, '🎵 Transcribing audio...');
-    }, 3000);
+      if (activeTasks.has(videoId)) {
+        activeTasks.set(videoId, { ...activeTasks.get(videoId), status: 'transcribing', progress: 60 });
+        broadcastStatusUpdate(videoId, '🎵 Transcribing audio...');
+      }
+    }, 2000);
     
     setTimeout(() => {
-      activeTasks.set(videoId, { ...activeTasks.get(videoId), status: 'summarizing', progress: 85 });
-      broadcastStatusUpdate(videoId, '🤖 Summarizing with Qwen3 AI...');
-    }, 8000);
+      if (activeTasks.has(videoId)) {
+        activeTasks.set(videoId, { ...activeTasks.get(videoId), status: 'summarizing', progress: 85 });
+        broadcastStatusUpdate(videoId, '🤖 Summarizing with Gemini AI...');
+      }
+    }, 5000);
 
     // Use sync endpoint for processing
     const response = await fetch(`${API_BASE_URL}/summarize-sync`, {
@@ -200,6 +223,8 @@ async function processVideoInBackground(videoInfo) {
 
     if (response.ok) {
       const result = await response.json();
+      console.log('📥 Server response received:', result);
+      console.log('📥 Summary length:', result.summary ? result.summary.length : 'NO SUMMARY');
       
       // Cache the result
       const cacheEntry = {
@@ -215,14 +240,28 @@ async function processVideoInBackground(videoInfo) {
       await saveCache();
       console.log('💾 Saved cache to persistent storage');
 
-      // Remove from active tasks
-      activeTasks.delete(videoId);
+      // Mark task as completed but keep it briefly for popup detection
+      activeTasks.set(videoId, {
+        status: 'completed',
+        progress: 100,
+        startTime: activeTasks.get(videoId)?.startTime || Date.now(),
+        summary: result.summary
+      });
 
-      // Log completion for history (but don't broadcast as current status)
+      // Log completion for history
       await addStatusToLog(videoId, '✅ Summarization successful!');
+      
+      // Store the result in multiple storage locations for reliability
+      await storeResultInMultipleLocations(videoId, result.summary);
       
       // Notify completion - send the summary
       broadcastSummaryReady(videoId, result.summary);
+      
+      // Remove from active tasks after a brief delay to allow popup detection
+      setTimeout(() => {
+        activeTasks.delete(videoId);
+        console.log('🗑️ Removed completed task for video:', videoId);
+      }, 2000);
 
     } else {
       const errorData = await response.json();
@@ -230,6 +269,8 @@ async function processVideoInBackground(videoInfo) {
     }
 
   } catch (error) {
+    console.error('❌ Error in background processing:', error);
+    
     // Remove from active tasks
     activeTasks.delete(videoId);
 
@@ -238,7 +279,7 @@ async function processVideoInBackground(videoInfo) {
     if (error.message.includes('Failed to fetch')) {
       errorMessage = 'Connection failed. Please try again.';
     } else if (error.message.includes('API key')) {
-      errorMessage = 'Ollama connection failed. Please check your .env file.';
+      errorMessage = 'Gemini API connection failed. Please check your .env file.';
     } else if (error.message.includes('403')) {
       errorMessage = 'YouTube temporarily blocked the request. Please try again.';
     } else {
@@ -247,6 +288,63 @@ async function processVideoInBackground(videoInfo) {
 
     // Log error and broadcast it
     broadcastStatusUpdate(videoId, `❌ ${errorMessage}`);
+    
+    // Also store the error in storage so popup can retrieve it
+    await storeErrorInStorage(videoId, errorMessage);
+    
+    // Try to send error status to any open popups
+    try {
+      chrome.runtime.sendMessage({
+        action: 'statusUpdate',
+        videoId: videoId,
+        status: `❌ ${errorMessage}`
+      }).catch((error) => {
+        console.log('❌ Error broadcasting error status:', error);
+      });
+    } catch (error) {
+      console.log('❌ Error broadcasting error status:', error);
+    }
+  }
+}
+
+// Store error in storage for popup retrieval
+async function storeErrorInStorage(videoId, errorMessage) {
+  try {
+    await chrome.storage.local.set({
+      [`errorResult_${videoId}`]: {
+        error: errorMessage,
+        timestamp: Date.now(),
+        videoId: videoId
+      }
+    });
+    console.log('💾 Stored error result in storage for video:', videoId);
+  } catch (error) {
+    console.error('❌ Error storing error result:', error);
+  }
+}
+
+// Store result in multiple locations for reliability
+async function storeResultInMultipleLocations(videoId, summary) {
+  try {
+    // 1. Store in Chrome storage (primary location)
+    await chrome.storage.local.set({
+      [`summaryResult_${videoId}`]: {
+        summary: summary,
+        timestamp: Date.now(),
+        videoId: videoId
+      }
+    });
+    console.log('💾 Stored summary result in Chrome storage for video:', videoId);
+    
+    // 2. Store with a timestamp for cleanup purposes
+    await chrome.storage.local.set({
+      [`summaryTimestamp_${videoId}`]: Date.now()
+    });
+    
+    console.log('💾 Summary stored in all available locations for video:', videoId);
+    
+  } catch (error) {
+    console.error('❌ Error storing result in multiple locations:', error);
   }
 }
 
@@ -284,35 +382,106 @@ function broadcastStatusUpdate(videoId, status) {
   addStatusToLog(videoId, status);
   
   // Try to send status update to any open popups
-  chrome.runtime.sendMessage({
-    action: 'statusUpdate',
-    videoId: videoId,
-    status: status
-  }).catch(() => {
-    // Ignore errors - popup might not be open
-  });
+  try {
+    chrome.runtime.sendMessage({
+      action: 'statusUpdate',
+      videoId: videoId,
+      status: status
+    }).catch((error) => {
+      console.log('❌ Error broadcasting status via runtime (popup may not be open):', error);
+    });
+  } catch (error) {
+    console.log('❌ Error broadcasting status via runtime:', error);
+  }
 }
 
 function broadcastSummaryReady(videoId, summary) {
-  // Try to send summary to any open popups
-  chrome.runtime.sendMessage({
-    action: 'summaryReady',
-    videoId: videoId,
-    summary: summary
-  }).catch(() => {
-    // Ignore errors - popup might not be open
+  console.log('📤 Broadcasting summary ready for video:', videoId);
+  console.log('📤 Summary content:', summary);
+  console.log('📤 Summary length:', summary ? summary.length : 'NO SUMMARY');
+  
+  // Store the result in storage for the popup to find (this is the most reliable method)
+  chrome.storage.local.set({
+    [`summaryResult_${videoId}`]: {
+      summary: summary,
+      timestamp: Date.now(),
+      videoId: videoId
+    }
+  }).then(() => {
+    console.log('💾 Successfully stored summary result in storage for video:', videoId);
+  }).catch((error) => {
+    console.error('❌ Failed to store summary result:', error);
   });
+  
+  // Also store in localStorage as a backup
+  try {
+    localStorage.setItem(`summary_${videoId}`, summary);
+    localStorage.setItem(`summary_timestamp_${videoId}`, Date.now().toString());
+    console.log('💾 Also stored summary in localStorage as backup');
+  } catch (error) {
+    console.error('❌ Failed to store in localStorage:', error);
+  }
+  
+  // Try to send summary to any open popups via runtime message
+  try {
+    console.log('📤 Sending summary via runtime message');
+    chrome.runtime.sendMessage({
+      action: 'summaryReady',
+      videoId: videoId,
+      summary: summary
+    }).then(() => {
+      console.log('✅ Runtime message sent successfully');
+    }).catch((error) => {
+      console.log('❌ Error broadcasting summary via runtime (popup may not be open):', error);
+    });
+  } catch (error) {
+    console.log('❌ Error broadcasting summary via runtime:', error);
+  }
+  
+  // Also try to send a status update to ensure the popup knows something happened
+  try {
+    chrome.runtime.sendMessage({
+      action: 'statusUpdate',
+      videoId: videoId,
+      status: '✅ Summarization successful!'
+    }).catch((error) => {
+      console.log('❌ Error broadcasting status update:', error);
+    });
+  } catch (error) {
+    console.log('❌ Error broadcasting status update:', error);
+  }
 }
 
-function updateStatus(status) {
-  // Legacy function - kept for compatibility
-  chrome.runtime.sendMessage({
-    action: 'updateStatus',
-    status: status
-  }).catch(() => {
-    // Ignore errors - popup might not be open
-  });
-}
+// Periodic cleanup and maintenance
+setInterval(async () => {
+  try {
+    // Clean up old error results (older than 1 hour)
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    const storageKeys = await chrome.storage.local.get(null);
+    
+    for (const [key, value] of Object.entries(storageKeys)) {
+      if (key.startsWith('errorResult_') && value.timestamp < oneHourAgo) {
+        await chrome.storage.local.remove([key]);
+        console.log('🧹 Cleaned up old error result:', key);
+      }
+    }
+    
+    // Clean up old summary results (older than 24 hours)
+    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+    for (const [key, value] of Object.entries(storageKeys)) {
+      if (key.startsWith('summaryResult_') && value.timestamp < oneDayAgo) {
+        await chrome.storage.local.remove([key]);
+        console.log('🧹 Cleaned up old summary result:', key);
+      }
+    }
+    
+    // Save cache periodically
+    await saveCache();
+    
+  } catch (error) {
+    console.error('❌ Error in periodic cleanup:', error);
+  }
+}, 300000); // Run every 5 minutes
 
 // Handle extension startup
 chrome.runtime.onStartup.addListener(function() {

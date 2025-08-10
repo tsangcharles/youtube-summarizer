@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Setup script for YouTube Summarizer
-Helps users create their .env file with the required Qwen3 configuration.
+Helps users create their .env file with the required Gemini API configuration.
 """
 
 import os
@@ -19,59 +19,55 @@ def main():
             print("Setup cancelled.")
             return
     
-    print("\n🤖 This application uses Ollama for local AI processing.")
-    print("🔗 Make sure you have Ollama running: https://ollama.ai")
-    print("💡 No API keys needed - everything runs locally!\n")
+    print("\n🤖 This application uses Google Gemini API for AI processing.")
+    print("🔗 Get your API key from: https://makersuite.google.com/app/apikey")
+    print("💡 You'll need a Gemini API key to use this application.\n")
     
-    # Get Ollama configuration from user
-    print("Ollama Configuration:")
-    qwen_url = input("Enter Ollama base URL (default: http://localhost:11434): ").strip()
-    if not qwen_url:
-        qwen_url = "http://localhost:11434"
+    # Get Gemini configuration from user
+    print("Gemini API Configuration:")
+    gemini_api_key = input("Enter your Gemini API key: ").strip()
+    if not gemini_api_key:
+        print("❌ Gemini API key is required!")
+        return
     
-    qwen_model = input("Enter Qwen3 model name (default: qwen3:0.6b): ").strip()
-    if not qwen_model:
-        qwen_model = "qwen3:0.6b"
+    gemini_model = input("Enter Gemini model name (default: gemini-2.0-flash-exp): ").strip()
+    if not gemini_model:
+        gemini_model = "gemini-2.0-flash-exp"
     
     # Create .env file
     try:
         with open('.env', 'w') as f:
-            f.write(f"# Ollama Configuration\n")
-            f.write(f"QWEN_BASE_URL={qwen_url}\n")
-            f.write(f"QWEN_MODEL={qwen_model}\n")
-            f.write(f"\n# Alternative for non-host networking:\n")
-            f.write(f"# QWEN_BASE_URL=http://host.docker.internal:11434\n")
+            f.write(f"# Gemini API Configuration\n")
+            f.write(f"GEMINI_API_KEY={gemini_api_key}\n")
+            f.write(f"GEMINI_MODEL={gemini_model}\n")
         
         print("\n✅ .env file created successfully!")
-        print("🔒 Your Qwen3 configuration is now stored in the .env file")
-        print("📋 The .env file can be safely committed since it contains no sensitive data")
+        print("🔒 Your Gemini API configuration is now stored in the .env file")
+        print("⚠️  WARNING: The .env file contains your API key - DO NOT commit it to version control!")
         
         # Test the setup
-        print("\n🧪 Testing Ollama connection...")
-        os.environ['QWEN_BASE_URL'] = qwen_url
-        os.environ['QWEN_MODEL'] = qwen_model
+        print("\n🧪 Testing Gemini API connection...")
+        os.environ['GEMINI_API_KEY'] = gemini_api_key
+        os.environ['GEMINI_MODEL'] = gemini_model
         
         try:
-            import requests
-            response = requests.get(f"{qwen_url}/api/tags", timeout=5)
-            if response.status_code == 200:
-                print("✅ Ollama connection test passed!")
-                models = response.json().get('models', [])
-                model_names = [model['name'] for model in models]
-                if qwen_model in model_names:
-                    print(f"✅ Model '{qwen_model}' is available!")
-                else:
-                    print(f"⚠️  Model '{qwen_model}' not found. Available models: {', '.join(model_names)}")
-                    print(f"💡 Run: docker exec ollama ollama pull {qwen_model}")
+            import google.generativeai as genai
+            genai.configure(api_key=gemini_api_key)
+            model = genai.GenerativeModel(gemini_model)
+            
+            # Test with a simple prompt
+            response = model.generate_content("Hello, this is a test.")
+            if response and response.text:
+                print("✅ Gemini API connection test passed!")
+                print(f"✅ Model '{gemini_model}' is working!")
             else:
-                print("❌ Ollama connection test failed!")
-                print("💡 Make sure Ollama is running: docker run -d -p 11434:11434 ollama/ollama")
+                print("❌ Gemini API test failed - no response received")
         except Exception as e:
-            print(f"❌ Connection test failed: {e}")
-            print("💡 Make sure Ollama is running: docker run -d -p 11434:11434 ollama/ollama")
+            print(f"❌ Gemini API test failed: {e}")
+            print("💡 Please check your API key and try again")
         
         print("\n🚀 Setup complete! You can now run the application.")
-        print("📖 Run 'python summarize_youtube_qwen.py' to test the summarizer")
+        print("📖 Run 'python summarize_youtube_gemini.py' to test the summarizer")
         print("🐳 Or run 'docker-compose up' to start the server")
         
     except Exception as e:

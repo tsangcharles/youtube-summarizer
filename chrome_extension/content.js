@@ -22,6 +22,17 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
       });
     }
   }
+  
+  // Forward messages from background script to popup
+  if (request.action === 'summaryReady' || request.action === 'statusUpdate') {
+    console.log('📤 Forwarding message to popup:', request);
+    // Forward the message to any open popups
+    try {
+      chrome.runtime.sendMessage(request);
+    } catch (error) {
+      console.log('❌ Error forwarding message to popup:', error);
+    }
+  }
 });
 
 function extractVideoInfo() {

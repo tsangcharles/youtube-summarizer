@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Flask server for YouTube Video Summarizer
-Provides REST API endpoints for video summarization using Whisper + Qwen3.
+Provides REST API endpoints for video summarization using Whisper + Gemini.
 """
 
 from flask import Flask, request, jsonify
@@ -15,10 +15,10 @@ import time
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import summarizer functions
-from summarize_youtube_qwen import (
+from summarize_youtube_gemini import (
     get_video_info, 
     get_transcript_with_whisper, 
-    summarize_with_qwen,
+    summarize_with_gemini,
     initialize_whisper_model
 )
 
@@ -150,7 +150,7 @@ def process_video_summary(request_id, video_url, video_title):
         processing_status[request_id] = 'Generating summary with AI...'
         
         # Generate summary
-        summary = summarize_with_qwen(transcript, video_title)
+        summary = summarize_with_gemini(transcript, video_title)
         if not summary:
             processing_status[request_id] = {
                 'type': 'error',
@@ -229,7 +229,7 @@ def summarize_video_sync():
         
         # Generate summary
         print("🤖 Generating AI summary...")
-        summary = summarize_with_qwen(transcript, video_title)
+        summary = summarize_with_gemini(transcript, video_title)
         if not summary:
             return jsonify({
                 'success': False,
@@ -237,6 +237,7 @@ def summarize_video_sync():
             }), 400
         
         print("✅ Summary generated successfully!")
+        print(f"📝 Summary content: {summary[:200]}...")  # Show first 200 chars
         return jsonify({
             'success': True,
             'summary': summary,

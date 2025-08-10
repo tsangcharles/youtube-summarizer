@@ -1,6 +1,6 @@
 # 🎥 YouTube Video Summarizer
 
-A powerful Chrome extension that automatically summarizes YouTube videos using AI (Whisper + Qwen3). Downloads video audio, transcribes it with Whisper, and generates concise summaries using Ollama's Qwen3 models.
+A powerful Chrome extension that automatically summarizes YouTube videos using AI (Whisper + Gemini). Downloads video audio, transcribes it with Whisper, and generates concise summaries using Google's Gemini API.
 
 ## 📁 Project Structure
 
@@ -15,7 +15,7 @@ youtube_summary/
 │   ├── icons/               # Extension icons
 │   └── README.md            # Extension setup guide
 ├── server.py                # 🚀 Flask backend server
-├── summarize_youtube_qwen.py # 🤖 Core AI logic (Whisper + Qwen3)
+├── summarize_youtube_gemini.py # 🤖 Core AI logic (Whisper + Gemini)
 ├── requirements_server.txt  # 📦 Python dependencies
 ├── Dockerfile              # 🐳 Docker configuration
 ├── docker-compose.yml      # 🐳 Docker Compose setup
@@ -24,26 +24,16 @@ youtube_summary/
 
 ## 🚀 Quick Start
 
-### 1. Setup Ollama Docker Container
+### 1. Get Gemini API Key
 
-First, run the Ollama Docker container:
+First, get your Gemini API key from Google:
 
-```bash
-# For CPU-only setup:
-docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Sign in with your Google account
+3. Click "Create API Key"
+4. Copy the API key (you'll need it for the next step)
 
-# For NVIDIA GPU setup:
-docker run -d --gpus=all -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
-```
-
-Next, download the Qwen3 model (this runs in the background):
-
-```bash
-# Download and setup the qwen3:0.6b model
-docker exec ollama ollama pull qwen3:0.6b
-```
-
-**📝 Note:** The model download happens automatically and the container runs in the background. No need for interactive terminal sessions.
+**📝 Note:** The Gemini API is free for most use cases with generous quotas.
 
 ### 2. Setup Environment Variables
 ```bash
@@ -51,9 +41,9 @@ docker exec ollama ollama pull qwen3:0.6b
 python setup_env.py
 
 # Option 2: Manual setup
-# Create .env file with Ollama configuration
-echo "QWEN_BASE_URL=http://localhost:11434" > .env
-echo "QWEN_MODEL=qwen3:0.6b" >> .env
+# Create .env file with Gemini configuration
+echo "GEMINI_API_KEY=your_api_key_here" > .env
+echo "GEMINI_MODEL=gemini-2.0-flash-exp" >> .env
 ```
 
 ### 3. Start Server with Docker
@@ -64,6 +54,8 @@ docker compose up -d
 # Check if it's running
 curl http://localhost:5000/health
 ```
+
+
 
 ### 4. Install Chrome Extension
 1. Open Chrome and go to `chrome://extensions/`
@@ -102,32 +94,13 @@ docker compose up -d --build
 curl http://localhost:5000/health
 ```
 
-### Ollama Container Management
-```bash
-# Check if Ollama is running
-docker ps | grep ollama
 
-# Start Ollama container (if stopped)
-docker start ollama
-
-# Stop Ollama container
-docker stop ollama
-
-# View available models
-docker exec ollama ollama list
-
-# Download additional models
-docker exec ollama ollama pull qwen3:1.5b
-
-# Test Ollama API
-curl http://localhost:11434/api/tags
-```
 
 ## ✨ Features
 
 - **One-click summarization** - No URL copying needed
 - **Auto video detection** - Works on any YouTube page
-- **AI-powered summaries** - Whisper + Qwen3
+- **AI-powered summaries** - Whisper + Gemini
 - **Beautiful UI** - Modern, intuitive interface
 - **Docker deployment** - Easy setup and management
 - **Real-time progress** - See processing status
@@ -136,15 +109,15 @@ curl http://localhost:11434/api/tags
 
 ## 🔧 Requirements
 
-- **Docker Desktop** - For running Ollama and the server
+- **Docker Desktop** - For running the server
 - **Chrome browser** - For the extension
-- **Ollama** - For running Qwen3 models locally
+- **Gemini API Key** - For AI summarization (free tier available)
 
 ## 🛠️ Development
 
 ### **Backend:** Flask server with async processing
 ### **Frontend:** Chrome extension with modern UI
-### **AI:** Whisper for transcription, Qwen3 for summarization
+### **AI:** Whisper for transcription, Gemini for summarization
 ### **Deployment:** Docker containerization
 
 ## 🔧 Troubleshooting
@@ -163,11 +136,11 @@ docker compose logs
 2. Check if Docker container is up: `docker compose ps`
 3. Restart the container: `docker compose restart`
 
-### **Ollama connection issues:**
-1. Make sure Ollama container is running: `docker ps | grep ollama`
-2. Check if Ollama is accessible: `curl http://localhost:11434/api/tags`
-3. Verify the model is downloaded: `docker exec ollama ollama list`
-4. Check your `.env` file has correct QWEN_BASE_URL and QWEN_MODEL
+### **Gemini API connection issues:**
+1. Make sure your API key is correct in the `.env` file
+2. Check if you have sufficient API quota: [Google AI Studio](https://makersuite.google.com/app/apikey)
+3. Verify the model name is correct (default: `gemini-2.0-flash-exp`)
+4. Test your API key manually: `python -c "import google.generativeai as genai; genai.configure(api_key='your_key'); print('Valid')"`
 
 ### **Audio download issues:**
 - The server automatically handles YouTube's anti-bot measures
@@ -186,17 +159,18 @@ docker compose logs
 
 ## 🔒 Security
 
-- **Local processing** - All AI inference happens locally with Ollama
-- **No external API calls** - Everything runs on your machine
+- **API-based processing** - AI summarization happens via Google's secure Gemini API
+- **Secure API calls** - All requests use HTTPS with your API key
 - **CORS enabled** - Safe cross-origin requests
 - **Automatic cleanup** - No sensitive data left behind
+- **⚠️ Important:** Keep your `.env` file secure and never commit it to version control
 
 ## 🎯 How It Works
 
 1. **Video Detection** - Extension detects YouTube video on current page
 2. **Audio Download** - Server downloads video audio using yt-dlp
 3. **Transcription** - Whisper AI converts audio to text
-4. **Summarization** - Qwen3 AI creates concise summary
+4. **Summarization** - Gemini AI creates concise summary
 5. **Display** - Results shown in extension popup
 
 ## 📝 License

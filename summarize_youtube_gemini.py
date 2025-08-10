@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-YouTube Video Summarizer using Whisper + Qwen3
+YouTube Video Summarizer using Whisper + Gemini
 Downloads YouTube videos, transcribes audio, and generates AI summaries.
 """
 
@@ -16,10 +16,11 @@ import yt_dlp
 import whisper
 import torch
 from urllib.parse import urlparse, parse_qs
+import google.generativeai as genai
 
 # Configuration
-QWEN_BASE_URL = os.environ.get('QWEN_BASE_URL', 'http://localhost:11434')
-QWEN_MODEL = os.environ.get('QWEN_MODEL', 'qwen3:0.6b')  # Default model, can be overridden
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash-exp')
 
 # Global Whisper model instance (loaded once, reused many times)
 _whisper_model = None
@@ -266,12 +267,18 @@ def get_transcript_with_whisper(url, video_id, status_callback=None):
         print(f"❌ Error in speech-to-text process: {e}")
         return None
 
-
-
-def summarize_with_qwen(transcript, video_title=""):
-    """Use local Qwen3 model to summarize the transcript"""
+def summarize_with_gemini(transcript, video_title=""):
+    """Use Google Gemini API to summarize the transcript"""
     try:
-        print("🔑 Connecting to local Qwen3 model...")
+        if not GEMINI_API_KEY:
+            print("❌ GEMINI_API_KEY not found in environment variables")
+            return None
+        
+        print("🔑 Connecting to Google Gemini API...")
+        
+        # Configure Gemini
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel(GEMINI_MODEL)
         
         print("📝 Creating optimized summary prompt...")
         
@@ -291,55 +298,30 @@ Key Points should be 3-5 bullets.
 Main Takeaway should be 1 sentence.
 Focus on the most important information only."""
         
-        # Prepare request payload for Ollama API
-        payload = {
-            "model": QWEN_MODEL,
-            "prompt": prompt,
-            "stream": False,
-            "think": False,
-            "options": {
-                "temperature": 0.1,  # Low for consistency, faster than 0.0
-                "top_p": 0.8,        # Slightly lower for faster sampling
-                "top_k": 15,         # Smaller vocabulary for speed                   
-                "num_predict": 500   # Shorter responses = faster generation
-            }
-        }
+        print(f"🤖 Generating summary with Gemini model ({GEMINI_MODEL})...")
         
-        print(f"🤖 Generating summary with Qwen3 model ({QWEN_MODEL})...")
+        # Generate content with Gemini
+        response = model.generate_content(prompt)
         
-        # Make request to Ollama API
-        response = requests.post(
-            f"{QWEN_BASE_URL}/api/generate",
-            json=payload,
-            timeout=600  # 10 minute timeout for generation
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            summary = result.get('response', '').strip()
-            
-            if summary:
-                print("✅ Summary generated successfully!")
-                return summary
-            else:
-                print("❌ Empty response from Qwen3 model")
-                return None
+        if response and response.text:
+            return response.text.strip()
         else:
-            print(f"❌ Qwen3 API error: {response.status_code} - {response.text}")
+            print("❌ Empty response from Gemini API")
             return None
     
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Connection error to Qwen3 server: {e}")
-        print("Make sure Ollama is running on localhost:11434")
-        return None
     except Exception as e:
-        print(f"❌ Error generating summary: {e}")
+        print(f"❌ Error generating summary with Gemini: {e}")
         return None
 
 def main():
     """Main function for command-line usage"""
-    print("YouTube Video Summarizer using Speech-to-Text + Qwen3")
+    print("YouTube Video Summarizer using Speech-to-Text + Gemini")
     print("=" * 60)
+    
+    if not GEMINI_API_KEY:
+        print("❌ GEMINI_API_KEY not found in environment variables")
+        print("Please set your Gemini API key in the .env file")
+        return
     
     while True:
         video_url = input("\nEnter YouTube video URL (or 'quit' to exit): ").strip()
@@ -368,8 +350,8 @@ def main():
         
         print(f"Transcript length: {len(transcript)} characters")
         
-        print("Generating summary with Qwen3...")
-        summary = summarize_with_qwen(transcript, video_title)
+        print("Generating summary with Gemini...")
+        summary = summarize_with_gemini(transcript, video_title)
         
         if summary:
             print("\n" + "=" * 60)
