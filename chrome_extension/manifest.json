@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "YouTube Video Summarizer",
   "version": "1.0",
-  "description": "Automatically summarize YouTube videos using AI",
+  "description": "Automatically summarize YouTube videos using AI - now embedded directly on YouTube pages!",
   "permissions": [
     "activeTab",
     "storage",
@@ -13,8 +13,7 @@
     "https://youtube.com/*"
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Summarize YouTube Video",
+    "default_title": "YouTube Video Summarizer",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
