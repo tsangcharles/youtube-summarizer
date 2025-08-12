@@ -154,7 +154,6 @@ function injectSummaryPanel() {
       <div class="youtube-summarizer-header">
         <h3>🎥 AI Summary</h3>
         <div class="youtube-summarizer-header-controls">
-          <button id="youtube-summarizer-refresh" class="youtube-summarizer-refresh" title="Check for completed summaries">🔄</button>
           <button id="youtube-summarizer-toggle" class="youtube-summarizer-toggle">−</button>
         </div>
       </div>
@@ -167,7 +166,6 @@ function injectSummaryPanel() {
           <div id="youtube-summarizer-result"></div>
           <progress id="youtube-summarizer-progress" value="0" max="100"></progress>
           <p id="youtube-summarizer-progress-text">Initializing...</p>
-          <div id="youtube-summarizer-log"></div>
         </div>
       </div>
     </div>
@@ -214,26 +212,7 @@ function injectSummaryPanel() {
       align-items: center;
     }
 
-    .youtube-summarizer-refresh {
-      background: none;
-      border: none;
-      color: white;
-      font-size: 16px;
-      cursor: pointer;
-      padding: 4px;
-      width: 28px;
-      height: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 4px;
-      transition: all 0.2s ease;
-    }
 
-    .youtube-summarizer-refresh:hover {
-      background: rgba(255, 255, 255, 0.1);
-      transform: scale(1.1);
-    }
     
     .youtube-summarizer-toggle {
       background: none;
@@ -262,7 +241,7 @@ function injectSummaryPanel() {
     .youtube-summarizer-btn {
       width: 100%;
       padding: 12px;
-      background: #808080;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #00b894 100%);
       color: white;
       border: none;
       border-radius: 8px;
@@ -275,8 +254,8 @@ function injectSummaryPanel() {
     
     .youtube-summarizer-btn:hover:not(:disabled) {
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(128, 128, 128, 0.3);
-      background: #666666;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+      background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 50%, #00a085 100%);
     }
     
     .youtube-summarizer-btn:disabled {
@@ -351,9 +330,9 @@ function injectSummaryPanel() {
     .youtube-summarizer-action-btn {
       flex: 1;
       padding: 6px 10px;
-      background: rgba(0, 255, 0, 0.2);
+      background: #00b894;
       color: white;
-      border: 1px solid rgba(0, 255, 0, 0.3);
+      border: none;
       border-radius: 6px;
       cursor: pointer;
       font-size: 11px;
@@ -361,7 +340,7 @@ function injectSummaryPanel() {
     }
     
     .youtube-summarizer-action-btn:hover {
-      background: rgba(0, 255, 0, 0.3);
+      background: #00a085;
       transform: translateY(-1px);
     }
     
@@ -393,26 +372,7 @@ function injectSummaryPanel() {
       font-weight: 500;
     }
     
-    #youtube-summarizer-log {
-      max-height: 80px;
-      overflow-y: auto;
-      background: rgba(0, 0, 0, 0.3);
-      border-radius: 6px;
-      padding: 8px;
-      font-size: 10px;
-      font-family: monospace;
-      color: rgba(255, 255, 255, 0.7);
-    }
-    
-    .youtube-summarizer-log-entry {
-      margin: 2px 0;
-      padding: 2px 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .youtube-summarizer-log-entry:last-child {
-      border-bottom: none;
-    }
+
     
     .youtube-summarizer-error {
       background: rgba(255, 107, 107, 0.2);
@@ -535,16 +495,7 @@ function setupPanelEventListeners() {
     });
   }
 
-  // Refresh button
-  const refreshBtn = summaryPanel.querySelector('#youtube-summarizer-refresh');
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', function() {
-      if (currentVideoId) {
-        console.log('🔄 Manually refreshing for video:', currentVideoId);
-        checkForCompletedSummaries();
-      }
-    });
-  }
+
 }
 
 // Function to update the video info display
@@ -648,31 +599,10 @@ function updateProgress(status, skipLogging = false) {
     progressBar.value = progress;
   }
   
-  if (!skipLogging) {
-    addStatusToLog(status);
-  }
+
 }
 
-// Function to add status to log
-function addStatusToLog(status) {
-  if (!summaryPanel) return;
-  
-  const logDiv = summaryPanel.querySelector('#youtube-summarizer-log');
-  if (!logDiv) return;
-  
-  const timestamp = new Date().toLocaleTimeString();
-  const logEntry = document.createElement('div');
-  logEntry.className = 'youtube-summarizer-log-entry';
-  logEntry.textContent = `[${timestamp}] ${status}`;
-  
-  logDiv.appendChild(logEntry);
-  logDiv.scrollTop = logDiv.scrollHeight;
-  
-  // Keep only last 10 entries
-  while (logDiv.children.length > 10) {
-    logDiv.removeChild(logDiv.firstChild);
-  }
-}
+
 
 // Function to display results
 function displayResult(summary, cached = false, customTitle = null) {

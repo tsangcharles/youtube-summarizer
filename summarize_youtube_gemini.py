@@ -289,12 +289,13 @@ Title: {video_title}
 {transcript}
 
 Format:
-**Summary (Video Title):**
-**Key Points:**
-**Main Takeaway:**
+**Video Title**
+**Summary**
+**Key Points**
+**Main Takeaway**
 
 Summary should be 2-3 sentences.
-Replace the video title with the actual video title.
+Replace the Video Title with the actual video title.
 Key Points should be 3-5 bullets.
 Main Takeaway should be 1 sentence.
 Focus on the most important information only."""
