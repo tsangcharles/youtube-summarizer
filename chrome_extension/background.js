@@ -393,6 +393,26 @@ function broadcastStatusUpdate(videoId, status) {
   } catch (error) {
     console.log('❌ Error broadcasting status via runtime:', error);
   }
+  
+  // Also try to send message to all tabs that might be on this video
+  try {
+    chrome.tabs.query({}, function(tabs) {
+      tabs.forEach(tab => {
+        if (tab.url && tab.url.includes(`youtube.com/watch?v=${videoId}`)) {
+          console.log('📤 Sending status update to tab:', tab.id, status);
+          chrome.tabs.sendMessage(tab.id, {
+            action: 'statusUpdate',
+            videoId: videoId,
+            status: status
+          }).catch((error) => {
+            console.log('❌ Error sending status update to tab:', tab.id, error);
+          });
+        }
+      });
+    });
+  } catch (error) {
+    console.log('❌ Error broadcasting status to tabs:', error);
+  }
 }
 
 function broadcastSummaryReady(videoId, summary) {
@@ -449,6 +469,26 @@ function broadcastSummaryReady(videoId, summary) {
     });
   } catch (error) {
     console.log('❌ Error broadcasting status update:', error);
+  }
+  
+  // Try to send message to all tabs that might be on this video
+  try {
+    chrome.tabs.query({}, function(tabs) {
+      tabs.forEach(tab => {
+        if (tab.url && tab.url.includes(`youtube.com/watch?v=${videoId}`)) {
+          console.log('📤 Sending summary to tab:', tab.id);
+          chrome.tabs.sendMessage(tab.id, {
+            action: 'summaryReady',
+            videoId: videoId,
+            summary: summary
+          }).catch((error) => {
+            console.log('❌ Error sending message to tab:', tab.id, error);
+          });
+        }
+      });
+    });
+  } catch (error) {
+    console.log('❌ Error broadcasting to tabs:', error);
   }
 }
 

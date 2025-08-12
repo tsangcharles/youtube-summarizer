@@ -6,6 +6,7 @@ console.log('🎥 YouTube Summarizer content script loaded');
 let summaryPanel = null;
 let currentVideoId = null;
 let isProcessing = false;
+let summaryCheckInterval = null;
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
@@ -49,6 +50,95 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   }
 });
 
+// Function to check for completed summaries when content script becomes active
+async function checkForCompletedSummaries() {
+  if (!currentVideoId) {
+    console.log('🔍 No current video ID, skipping summary check');
+    return;
+  }
+  
+  try {
+    console.log('🔍 Checking for completed summaries for video:', currentVideoId, '(page hidden:', document.hidden, ')');
+    
+    // Check Chrome storage for completed summary
+    const result = await chrome.storage.local.get([`summaryResult_${currentVideoId}`]);
+    const storedResult = result[`summaryResult_${currentVideoId}`];
+    
+    console.log('🔍 Chrome storage result:', storedResult);
+    
+    if (storedResult && storedResult.summary) {
+      console.log('📋 Found completed summary in storage, displaying immediately!');
+      console.log('📋 Summary length:', storedResult.summary.length);
+      console.log('📋 Summary preview:', storedResult.summary.substring(0, 100) + '...');
+      
+      // Always extract fresh video info to get the current video title
+      const currentVideoInfo = extractVideoInfo();
+      if (currentVideoInfo && currentVideoInfo.videoId === currentVideoId) {
+        // Use the fresh title from the current page
+        displayResult(storedResult.summary, false, currentVideoInfo.title);
+      } else {
+        // Fallback to default title extraction
+        displayResult(storedResult.summary);
+      }
+      
+      // Clear the stored result to avoid duplicates
+      await chrome.storage.local.remove([`summaryResult_${currentVideoId}`]);
+      console.log('🧹 Cleared stored result from storage');
+      return;
+    }
+    
+    // Check for error results
+    const errorResult = await chrome.storage.local.get([`errorResult_${currentVideoId}`]);
+    const storedError = errorResult[`errorResult_${currentVideoId}`];
+    
+    console.log('🔍 Error storage result:', storedError);
+    
+    if (storedError && storedError.error) {
+      console.log('❌ Found error result in storage, displaying immediately!');
+      displayError(storedError.error);
+      
+      // Clear the stored error to avoid duplicates
+      await chrome.storage.local.remove([`errorResult_${currentVideoId}`]);
+      console.log('🧹 Cleared stored error from storage');
+      return;
+    }
+    
+    // Check if there's an active task
+    console.log('🔍 Checking for active tasks...');
+    const taskStatus = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        action: 'getTaskStatus',
+        videoId: currentVideoId
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.log('❌ Error getting task status:', chrome.runtime.lastError);
+          resolve(null);
+        } else {
+          resolve(response);
+        }
+      });
+    });
+    
+    console.log('🔍 Task status result:', taskStatus);
+    
+    if (taskStatus && taskStatus.status === 'completed' && taskStatus.summary) {
+      console.log('✅ Found completed task with summary, displaying immediately!');
+      console.log('✅ Summary length:', taskStatus.summary.length);
+      displayResult(taskStatus.summary);
+      return;
+    }
+    
+    // Check for cached summary as final fallback
+    console.log('🔍 Checking for cached summary...');
+    await checkForCachedSummary(currentVideoId);
+    
+    console.log('🔍 Summary check completed for video:', currentVideoId);
+    
+  } catch (error) {
+    console.error('❌ Error checking for completed summaries:', error);
+  }
+}
+
 // Function to inject the summary panel into the YouTube page
 function injectSummaryPanel() {
   if (summaryPanel) {
@@ -63,12 +153,12 @@ function injectSummaryPanel() {
     <div class="youtube-summarizer-container">
       <div class="youtube-summarizer-header">
         <h3>🎥 AI Summary</h3>
-        <button id="youtube-summarizer-toggle" class="youtube-summarizer-toggle">−</button>
+        <div class="youtube-summarizer-header-controls">
+          <button id="youtube-summarizer-refresh" class="youtube-summarizer-refresh" title="Check for completed summaries">🔄</button>
+          <button id="youtube-summarizer-toggle" class="youtube-summarizer-toggle">−</button>
+        </div>
       </div>
       <div class="youtube-summarizer-content">
-        <div id="youtube-summarizer-video-info" class="youtube-summarizer-video-info">
-          <p>Loading video info...</p>
-        </div>
         <button id="youtube-summarizer-btn" class="youtube-summarizer-btn" disabled>
           <span class="youtube-summarizer-spinner"></span>
           Loading...
@@ -118,6 +208,33 @@ function injectSummaryPanel() {
       font-weight: 600;
     }
     
+    .youtube-summarizer-header-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .youtube-summarizer-refresh {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+
+    .youtube-summarizer-refresh:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: scale(1.1);
+    }
+    
     .youtube-summarizer-toggle {
       background: none;
       border: none;
@@ -142,32 +259,10 @@ function injectSummaryPanel() {
       padding: 16px;
     }
     
-    .youtube-summarizer-video-info {
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 16px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .youtube-summarizer-video-info h4 {
-      margin: 0 0 8px 0;
-      color: white;
-      font-size: 14px;
-      font-weight: 500;
-    }
-    
-    .youtube-summarizer-video-info p {
-      margin: 0;
-      color: rgba(255, 255, 255, 0.8);
-      font-size: 12px;
-      font-family: monospace;
-    }
-    
     .youtube-summarizer-btn {
       width: 100%;
       padding: 12px;
-      background: linear-gradient(45deg, #ff0000, #cc0000);
+      background: #808080;
       color: white;
       border: none;
       border-radius: 8px;
@@ -180,7 +275,8 @@ function injectSummaryPanel() {
     
     .youtube-summarizer-btn:hover:not(:disabled) {
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(255, 0, 0, 0.3);
+      box-shadow: 0 4px 12px rgba(128, 128, 128, 0.3);
+      background: #666666;
     }
     
     .youtube-summarizer-btn:disabled {
@@ -213,8 +309,8 @@ function injectSummaryPanel() {
     }
     
     .youtube-summarizer-summary {
-      background: rgba(0, 255, 0, 0.1);
-      border: 1px solid rgba(0, 255, 0, 0.3);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 8px;
       padding: 12px;
       margin-bottom: 12px;
@@ -345,6 +441,8 @@ function injectSummaryPanel() {
     .youtube-summarizer-collapsed .youtube-summarizer-toggle {
       transform: rotate(180deg);
     }
+     
+     /* Removed summaryFound animation - no longer needed */
   `;
 
   // Insert styles into the page
@@ -436,19 +534,22 @@ function setupPanelEventListeners() {
       }
     });
   }
+
+  // Refresh button
+  const refreshBtn = summaryPanel.querySelector('#youtube-summarizer-refresh');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', function() {
+      if (currentVideoId) {
+        console.log('🔄 Manually refreshing for video:', currentVideoId);
+        checkForCompletedSummaries();
+      }
+    });
+  }
 }
 
 // Function to update the video info display
 function updateVideoInfoDisplay(videoInfo) {
   if (!summaryPanel) return;
-  
-  const videoInfoDiv = summaryPanel.querySelector('#youtube-summarizer-video-info');
-  if (videoInfoDiv) {
-    videoInfoDiv.innerHTML = `
-      <h4>📺 ${videoInfo.title}</h4>
-      <p>ID: ${videoInfo.videoId}</p>
-    `;
-  }
   
   // Enable the summarize button
   const summarizeBtn = summaryPanel.querySelector('#youtube-summarizer-btn');
@@ -467,6 +568,17 @@ function startSummarization(videoInfo) {
 
   isProcessing = true;
   currentVideoId = videoInfo.videoId;
+  
+  // Always refresh the YouTube title when generate is clicked
+  const freshVideoInfo = extractVideoInfo();
+  if (freshVideoInfo && freshVideoInfo.videoId === videoInfo.videoId) {
+    console.log('🔄 Refreshed video title:', freshVideoInfo.title);
+    // Store the fresh title for use in display
+    sessionStorage.setItem('youtubeSummarizer_freshTitle', freshVideoInfo.title);
+  }
+  
+  // Clear any existing summary display before starting new summarization
+  clearSummaryDisplay();
   
   // Update UI to show processing state
   const summarizeBtn = summaryPanel.querySelector('#youtube-summarizer-btn');
@@ -496,10 +608,16 @@ function startSummarization(videoInfo) {
     if (response && response.success) {
       console.log('✅ Summarization started successfully');
       updateProgress('🚀 Starting summarization...');
+      startSummaryChecking(); // Start checking for completion
+      startActivePageChecking(); // Start checking for completed summaries when page is active
+      startContinuousMonitoring(); // Start continuous monitoring
     } else {
       console.error('❌ Failed to start summarization:', response?.error);
       displayError(response?.error || 'Failed to start summarization');
       isProcessing = false;
+      stopSummaryChecking(); // Stop checking on failure
+      stopActivePageChecking(); // Stop checking on failure
+      stopContinuousMonitoring(); // Stop continuous monitoring on failure
       if (summarizeBtn) {
         summarizeBtn.disabled = false;
         summarizeBtn.innerHTML = '🚀 Generate Summary';
@@ -557,15 +675,52 @@ function addStatusToLog(status) {
 }
 
 // Function to display results
-function displayResult(summary, cached = false) {
+function displayResult(summary, cached = false, customTitle = null) {
   if (!summaryPanel) return;
   
   isProcessing = false;
+  stopSummaryChecking(); // Stop checking when result is displayed
+  stopActivePageChecking(); // Stop checking when result is displayed
+  stopContinuousMonitoring(); // Stop continuous monitoring when result is displayed
   
   const resultDiv = summaryPanel.querySelector('#youtube-summarizer-result');
   const summarizeBtn = summaryPanel.querySelector('#youtube-summarizer-btn');
   
   if (resultDiv) {
+    // Get the video title from the page or use custom title
+    let videoTitle = customTitle || 'this video';
+    
+    if (!customTitle) {
+      // First try to use the fresh title we just extracted
+      const freshTitle = sessionStorage.getItem('youtubeSummarizer_freshTitle');
+      if (freshTitle) {
+        videoTitle = freshTitle;
+        console.log('🔄 Using fresh title from generate button click:', videoTitle);
+        // Clear the stored title after using it
+        sessionStorage.removeItem('youtubeSummarizer_freshTitle');
+      } else {
+        // Fallback to extracting from page
+        try {
+          const metaTitle = document.querySelector('meta[property="og:title"]');
+          if (metaTitle) {
+            videoTitle = metaTitle.getAttribute('content');
+          } else {
+            const h1Title = document.querySelector('h1.ytd-video-primary-info-renderer');
+            if (h1Title) {
+              videoTitle = h1Title.textContent.trim();
+            } else {
+              const altH1Title = document.querySelector('h1.style-scope.ytd-watch-metadata');
+              if (altH1Title) {
+                videoTitle = altH1Title.textContent.trim();
+              }
+            }
+          }
+        } catch (error) {
+          console.log('Could not extract video title for summary header');
+        }
+      }
+    }
+    
     // Format the summary with proper line breaks and paragraphs
     const formattedSummary = summary
       .split('\n')
@@ -575,13 +730,12 @@ function displayResult(summary, cached = false) {
     
     resultDiv.innerHTML = `
       <div class="youtube-summarizer-summary">
-        <h4>📋 Summary ${cached ? '<small style="opacity: 0.7;">(cached)</small>' : ''}</h4>
         <div class="youtube-summarizer-summary-content">
           ${formattedSummary}
         </div>
         <div class="youtube-summarizer-actions">
-          <button class="youtube-summarizer-action-btn" onclick="navigator.clipboard.writeText('${summary.replace(/'/g, "\\'")}').then(() => { this.textContent = '✅ Copied!'; setTimeout(() => { this.textContent = '📋 Copy'; }, 2000); })">📋 Copy</button>
-          <button class="youtube-summarizer-action-btn" onclick="const blob = new Blob(['${summary.replace(/'/g, "\\'")}'], {type: 'text/plain'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'youtube_summary.txt'; a.click(); URL.revokeObjectURL(url);">💾 Save</button>
+          <button class="youtube-summarizer-action-btn" id="copy-summary-btn">📋 Copy</button>
+          <button class="youtube-summarizer-action-btn" id="save-summary-btn">💾 Save</button>
         </div>
       </div>
     `;
@@ -598,6 +752,66 @@ function displayResult(summary, cached = false) {
   if (progressBar) {
     progressBar.value = 100;
   }
+  
+  // Make the summary panel more visible with a highlight effect
+  // summaryPanel.style.animation = 'summaryFound 2s ease-in-out'; // Removed animation
+  
+  // Scroll the summary panel into view
+  summaryPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  
+  // Show browser notification if available and user is not on the page
+  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+    new Notification('🎥 YouTube Summary Ready!', {
+      body: `Your summary for "${videoTitle}" is ready!`,
+      icon: 'https://www.youtube.com/favicon.ico',
+      tag: 'youtube-summarizer'
+    });
+  }
+  
+  // Also try to request notification permission if not granted
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+  
+  // Add event listeners for copy and save buttons
+  const copyBtn = summaryPanel.querySelector('#copy-summary-btn');
+  const saveBtn = summaryPanel.querySelector('#save-summary-btn');
+  
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function() {
+      navigator.clipboard.writeText(summary).then(() => {
+        this.textContent = '✅ Copied!';
+        setTimeout(() => {
+          this.textContent = '📋 Copy';
+        }, 2000);
+      }).catch((error) => {
+        console.error('Failed to copy text:', error);
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = summary;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        this.textContent = '✅ Copied!';
+        setTimeout(() => {
+          this.textContent = '📋 Copy';
+        }, 2000);
+      });
+    });
+  }
+  
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function() {
+      const blob = new Blob([summary], {type: 'text/plain'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'youtube_summary.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
 }
 
 // Function to display errors
@@ -605,6 +819,9 @@ function displayError(error) {
   if (!summaryPanel) return;
   
   isProcessing = false;
+  stopSummaryChecking(); // Stop checking when error is displayed
+  stopActivePageChecking(); // Stop checking when error is displayed
+  stopContinuousMonitoring(); // Stop continuous monitoring when error is displayed
   
   const resultDiv = summaryPanel.querySelector('#youtube-summarizer-result');
   const summarizeBtn = summaryPanel.querySelector('#youtube-summarizer-btn');
@@ -641,6 +858,134 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     displayResult(request.summary);
   }
 });
+
+// Listen for page visibility changes to check for completed summaries
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden && currentVideoId) {
+    console.log('👁️ Page became visible, checking for completed summaries...');
+    // Multiple checks with different delays to ensure we catch the summary
+    setTimeout(() => {
+      console.log('🔍 First visibility check for completed summaries...');
+      checkForCompletedSummaries();
+    }, 100);
+    
+    setTimeout(() => {
+      console.log('🔍 Second visibility check for completed summaries...');
+      checkForCompletedSummaries();
+    }, 1000);
+    
+    setTimeout(() => {
+      console.log('🔍 Third visibility check for completed summaries...');
+      checkForCompletedSummaries();
+    }, 3000);
+    
+    // Also check if we're still processing and need to restart monitoring
+    if (isProcessing) {
+      console.log('🔄 Page became visible while processing, ensuring monitoring continues...');
+      startContinuousMonitoring();
+      
+      // Force an immediate check for completed summaries
+      setTimeout(() => {
+        console.log('🔍 Forcing immediate check after page became visible...');
+        checkForCompletedSummaries();
+      }, 100);
+    }
+  } else if (document.hidden && currentVideoId) {
+    console.log('👁️ Page became hidden, but continuous monitoring will continue...');
+  }
+});
+
+// Listen for window focus events as additional trigger
+window.addEventListener('focus', function() {
+  if (currentVideoId) {
+    console.log('🎯 Window focused, checking for completed summaries...');
+    // Multiple checks with different delays to ensure we catch the summary
+    setTimeout(() => {
+      console.log('🔍 First focus check for completed summaries...');
+      checkForCompletedSummaries();
+    }, 100);
+    
+    setTimeout(() => {
+      console.log('🔍 Second focus check for completed summaries...');
+      checkForCompletedSummaries();
+    }, 1000);
+    
+    setTimeout(() => {
+      console.log('🔍 Third focus check for completed summaries...');
+      checkForCompletedSummaries();
+    }, 3000);
+  }
+});
+
+// Set up periodic checking for completed summaries when processing
+function startSummaryChecking() {
+  if (summaryCheckInterval) {
+    clearInterval(summaryCheckInterval);
+  }
+  
+  summaryCheckInterval = setInterval(async () => {
+    if (currentVideoId && isProcessing) {
+      // Check every 500ms while processing, regardless of page visibility
+      console.log('🔍 Processing check (page hidden:', document.hidden, ')');
+      await checkForCompletedSummaries();
+    }
+  }, 500); // Check every 500ms while processing (more aggressive)
+}
+
+function stopSummaryChecking() {
+  if (summaryCheckInterval) {
+    clearInterval(summaryCheckInterval);
+    summaryCheckInterval = null;
+  }
+}
+
+// Also set up periodic checking for completed summaries when page is active (not just when processing)
+let activePageCheckInterval = null;
+
+function startActivePageChecking() {
+  if (activePageCheckInterval) {
+    clearInterval(activePageCheckInterval);
+  }
+  
+  activePageCheckInterval = setInterval(async () => {
+    if (currentVideoId && !isProcessing) {
+      // Check for completed summaries regardless of page visibility
+      console.log('🔍 Active page check (page hidden:', document.hidden, ')');
+      await checkForCompletedSummaries();
+    }
+  }, 2000); // Check every 2 seconds when page is active
+}
+
+function stopActivePageChecking() {
+  if (activePageCheckInterval) {
+    clearInterval(activePageCheckInterval);
+    activePageCheckInterval = null;
+  }
+}
+
+// Add a more aggressive monitoring system that runs continuously
+let continuousMonitoringInterval = null;
+
+function startContinuousMonitoring() {
+  if (continuousMonitoringInterval) {
+    clearInterval(continuousMonitoringInterval);
+  }
+  
+  continuousMonitoringInterval = setInterval(async () => {
+    if (currentVideoId) {
+      // Always check for completed summaries, regardless of processing state or page visibility
+      console.log('🔍 Continuous monitoring check (page hidden:', document.hidden, ')');
+      await checkForCompletedSummaries();
+    }
+  }, 1000); // Check every 1 second continuously
+}
+
+function stopContinuousMonitoring() {
+  if (continuousMonitoringInterval) {
+    clearInterval(continuousMonitoringInterval);
+    continuousMonitoringInterval = null;
+  }
+}
 
 function extractVideoInfo() {
   try {
@@ -751,8 +1096,18 @@ function autoExtractVideoInfo() {
     // Clear any cached video info first
     sessionStorage.removeItem('youtubeSummarizer_videoInfo');
     
+    // Clear any existing summary display when navigating to a new video
+    if (summaryPanel) {
+      clearSummaryDisplay();
+      console.log('🧹 Cleared existing summary display for new video');
+    }
+    
+    // Also reset the current video ID to ensure clean state
+    currentVideoId = null;
+    isProcessing = false;
+    
     // Wait a bit for the page to fully load
-    setTimeout(() => {
+    setTimeout(async () => {
       const videoInfo = extractVideoInfo();
       if (videoInfo) {
         // Store in session storage for quick access
@@ -770,8 +1125,19 @@ function autoExtractVideoInfo() {
         // Update the video info display
         updateVideoInfoDisplay(videoInfo);
         
-        // Check for cached summary
-        checkForCachedSummary(videoInfo.videoId);
+        // Start active page checking to look for completed summaries
+        startActivePageChecking();
+        startContinuousMonitoring(); // Start continuous monitoring
+        
+        // Wait a bit more for the panel to be fully set up
+        setTimeout(async () => {
+          console.log('🔍 Checking for completed summaries after panel setup...');
+          // Check for completed summaries first (in case they were generated while tab was inactive)
+          await checkForCompletedSummaries();
+          
+          // Then check for cached summary
+          await checkForCachedSummary(videoInfo.videoId);
+        }, 500);
       }
     }, 1000);
   } else {
@@ -782,6 +1148,9 @@ function autoExtractVideoInfo() {
       summaryPanel = null;
     }
     currentVideoId = null;
+    stopSummaryChecking(); // Stop any ongoing checking
+    stopActivePageChecking(); // Stop any ongoing checking
+    stopContinuousMonitoring(); // Stop any ongoing checking
   }
 }
 
@@ -793,7 +1162,19 @@ async function checkForCachedSummary(videoId) {
     
     if (cachedResult && cachedResult.summary) {
       console.log('📋 Found cached summary, displaying...');
-      displayResult(cachedResult.summary, true);
+      
+      // Ensure processing state is reset to allow display
+      isProcessing = false;
+      
+      // Always extract fresh video info to get the current video title
+      const currentVideoInfo = extractVideoInfo();
+      if (currentVideoInfo && currentVideoInfo.videoId === videoId) {
+        // Use the fresh title from the current page
+        displayResult(cachedResult.summary, true, currentVideoInfo.title);
+      } else {
+        // Fallback to stored title if extraction fails
+        displayResult(cachedResult.summary, true);
+      }
       
       // Show status section
       const statusDiv = summaryPanel.querySelector('#youtube-summarizer-status');
@@ -812,10 +1193,40 @@ async function checkForCachedSummary(videoId) {
       if (progressText) {
         progressText.textContent = '📋 Loaded from cache';
       }
+      
+      console.log('✅ Cached summary displayed successfully with fresh title');
     }
   } catch (error) {
     console.error('❌ Error checking cached summary:', error);
   }
+}
+
+// Function to clear the summary display
+function clearSummaryDisplay() {
+  if (!summaryPanel) return;
+  
+  // Reset processing state to allow new summaries to be displayed
+  isProcessing = false;
+  
+  const resultDiv = summaryPanel.querySelector('#youtube-summarizer-result');
+  const statusDiv = summaryPanel.querySelector('#youtube-summarizer-status');
+  const progressBar = summaryPanel.querySelector('#youtube-summarizer-progress');
+  const progressText = summaryPanel.querySelector('#youtube-summarizer-progress-text');
+  
+  if (resultDiv) {
+    resultDiv.innerHTML = '';
+  }
+  if (statusDiv) {
+    statusDiv.style.display = 'none';
+  }
+  if (progressBar) {
+    progressBar.value = 0;
+  }
+  if (progressText) {
+    progressText.textContent = 'Initializing...';
+  }
+  
+  console.log('🧹 Summary display cleared and processing state reset');
 }
 
 // Run extraction when page loads
@@ -832,14 +1243,38 @@ new MutationObserver(() => {
   if (url !== lastUrl) {
     lastUrl = url;
     console.log('🔄 URL changed, re-extracting video info...');
-    setTimeout(autoExtractVideoInfo, 1000); // Wait for page to load
+    setTimeout(async () => {
+      await autoExtractVideoInfo();
+    }, 1000); // Wait for page to load
   }
 }).observe(document, {subtree: true, childList: true});
 
 // Listen for YouTube's navigation events
 window.addEventListener('yt-navigate-finish', function() {
   console.log('🔄 YouTube navigation finished, re-extracting video info...');
-  setTimeout(autoExtractVideoInfo, 500);
+  setTimeout(async () => {
+    await autoExtractVideoInfo();
+  }, 500);
 });
+
+// Cleanup function to stop intervals and clear resources
+function cleanup() {
+  stopSummaryChecking();
+  stopActivePageChecking();
+  stopContinuousMonitoring();
+  
+  // Clear any existing summary display
+  clearSummaryDisplay();
+  
+  currentVideoId = null;
+  isProcessing = false;
+  console.log('🧹 Content script cleanup completed');
+}
+
+// Clean up when page is about to unload
+window.addEventListener('beforeunload', cleanup);
+
+// Clean up when navigating away from video pages
+window.addEventListener('pagehide', cleanup);
 
 console.log('✅ YouTube Summarizer content script initialization complete');
