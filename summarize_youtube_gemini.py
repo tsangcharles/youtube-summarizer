@@ -9,6 +9,7 @@ import re
 import glob
 import shutil
 import subprocess
+import time
 import numpy as np
 import requests
 import json 
@@ -35,14 +36,20 @@ YOUTUBE_PATTERNS = [
     r'youtube\.com\/watch\?.*v=([^&\n?#]+)'
 ]
 
-# yt-dlp configuration with more flexible format selection
+# yt-dlp configuration with more flexible format selection and anti-blocking measures
 YDL_OPTS = {
     'format': 'bestaudio/best[height<=480]/worst',
-    'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'extractor_retries': 3,
-    'retries': 3,
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'extractor_retries': 5,
+    'retries': 5,
     'extract_flat': False,
     'no_warnings': False,
+    'sleep_interval': 1,
+    'max_sleep_interval': 5,
+    'ignoreerrors': False,
+    'http_chunk_size': 10485760,  # 10MB chunks
+    'socket_timeout': 30,
+    'prefer_ffmpeg': True,
 }
 
 def initialize_whisper_model(model_name="base", force_reload=False):
@@ -117,51 +124,113 @@ def get_video_info(url):
         return video_id, f'Video {video_id}'
 
 def download_audio(url, video_id):
-    """Download audio from YouTube video"""
+    """Download audio from YouTube video with enhanced error handling and retry logic"""
     try:
         # Clean up any existing audio files first to prevent confusion
         cleanup_audio_files(video_id)
         
-        # Try multiple format configurations for better compatibility
+        # Enhanced format options with more aggressive fallbacks
         format_options = [
+            'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',  # Audio-only first
             'bestaudio/best[height<=480]/worst',  # Primary option
-            'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',  # Specific audio formats
             'best[height<=360]/worst',  # Lower quality fallback
+            'worst[ext=mp4]/worst[ext=webm]/worst',  # Even lower quality
             'worst'  # Last resort
         ]
         
-        for i, format_option in enumerate(format_options):
-            try:
-                ydl_opts = YDL_OPTS.copy()
-                ydl_opts['outtmpl'] = f'{video_id}.%(ext)s'
-                ydl_opts['format'] = format_option
-                
-                print(f"📥 Downloading audio for video ID: {video_id} (attempt {i+1})")
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
-                break  # Success, exit the loop
-                
-            except Exception as format_error:
-                print(f"Format '{format_option}' failed: {format_error}")
-                if i == len(format_options) - 1:  # Last attempt
-                    raise format_error
-                continue
+        # Try each format with different user agents for anti-blocking
+        user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ]
         
-        # Find downloaded file
-        patterns = [f'{video_id}.*', f'{video_id}.*.m4a', f'{video_id}.*.webm', f'{video_id}.*.mp3', f'{video_id}.*.mp4']
+        for i, format_option in enumerate(format_options):
+            for j, user_agent in enumerate(user_agents):
+                try:
+                    ydl_opts = YDL_OPTS.copy()
+                    ydl_opts['outtmpl'] = f'{video_id}.%(ext)s'
+                    ydl_opts['format'] = format_option
+                    ydl_opts['user_agent'] = user_agent
+                    
+                    # Add extra anti-blocking measures
+                    if i > 0:  # More aggressive settings for later attempts
+                        ydl_opts['sleep_interval'] = 2
+                        ydl_opts['max_sleep_interval'] = 10
+                    
+                    attempt_num = i * len(user_agents) + j + 1
+                    print(f"📥 Downloading audio for video ID: {video_id} (format attempt {i+1}, user agent {j+1}, total attempt {attempt_num})")
+                    
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([url])
+                    
+                    # If we get here, download succeeded
+                    break
+                    
+                except Exception as format_error:
+                    error_msg = str(format_error).lower()
+                    print(f"Format '{format_option}' with user agent {j+1} failed: {format_error}")
+                    
+                    # Check for specific error types
+                    if 'sign in to confirm your age' in error_msg or 'age-restricted' in error_msg:
+                        print("❌ Video is age-restricted - cannot download")
+                        return None
+                    elif 'private video' in error_msg or 'unavailable' in error_msg:
+                        print("❌ Video is private or unavailable")
+                        return None
+                    elif 'too many requests' in error_msg or 'rate limit' in error_msg:
+                        print("⏳ Rate limited, waiting before retry...")
+                        time.sleep(5)
+                    
+                    # If this is the last attempt with the last user agent and last format
+                    if i == len(format_options) - 1 and j == len(user_agents) - 1:
+                        raise format_error
+                    continue
+            else:
+                # This format option failed with all user agents, try next format
+                continue
+            # If we break from inner loop (success), also break from outer loop
+            break
+        
+        # Find downloaded file with more comprehensive patterns
+        patterns = [
+            f'{video_id}.*',
+            f'{video_id}.*.m4a', 
+            f'{video_id}.*.webm', 
+            f'{video_id}.*.mp3', 
+            f'{video_id}.*.mp4',
+            f'{video_id}.*.wav',
+            f'{video_id}.*.aac'
+        ]
         
         for pattern in patterns:
             matching_files = glob.glob(pattern)
             if matching_files:
                 audio_file = matching_files[0]
-                print(f"✅ Audio file downloaded successfully: {audio_file}")
+                file_size = os.path.getsize(audio_file) if os.path.exists(audio_file) else 0
+                print(f"✅ Audio file downloaded successfully: {audio_file} ({file_size} bytes)")
+                
+                # Check if file is not empty
+                if file_size < 1024:  # Less than 1KB is suspicious
+                    print(f"⚠️ Warning: Downloaded file is very small ({file_size} bytes)")
+                    os.remove(audio_file)
+                    continue
+                
                 return audio_file
         
-        print("❌ No audio file found with video ID pattern")
+        print("❌ No valid audio file found with video ID pattern")
         return None
     
     except Exception as e:
-        print(f"❌ Error downloading audio: {e}")
+        error_msg = str(e).lower()
+        if 'sign in to confirm your age' in error_msg or 'age-restricted' in error_msg:
+            print("❌ Cannot download age-restricted video")
+        elif 'private video' in error_msg or 'unavailable' in error_msg:
+            print("❌ Video is private or unavailable")
+        elif 'too many requests' in error_msg or 'rate limit' in error_msg:
+            print("❌ Rate limited by YouTube - try again later")
+        else:
+            print(f"❌ Error downloading audio: {e}")
         return None
 
 def load_audio_with_ffmpeg(audio_file):
@@ -185,31 +254,76 @@ def load_audio_with_ffmpeg(audio_file):
     return audio_data
 
 def transcribe_audio(audio_file):
-    """Transcribe audio using pre-loaded Whisper model with GPU acceleration"""
+    """Transcribe audio using pre-loaded Whisper model with enhanced error handling"""
     try:
         if not os.path.exists(audio_file):
             print(f"❌ Audio file not found: {audio_file}")
             return None
         
+        # Check file size
+        file_size = os.path.getsize(audio_file)
+        if file_size < 1024:  # Less than 1KB
+            print(f"❌ Audio file is too small ({file_size} bytes) - likely corrupted")
+            return None
+        
+        print(f"📁 Audio file size: {file_size} bytes")
+        
         # Get the pre-loaded Whisper model (loads once, reuses many times)
         print("🤖 Using pre-loaded Whisper model...")
         model = get_whisper_model()
         
-        # Load audio and transcribe
-        audio_data = load_audio_with_ffmpeg(audio_file)
+        # Load audio with error handling
+        try:
+            print("🎵 Loading audio data with ffmpeg...")
+            audio_data = load_audio_with_ffmpeg(audio_file)
+            
+            if audio_data is None or len(audio_data) == 0:
+                print("❌ Failed to load audio data or audio is empty")
+                return None
+                
+            print(f"🎵 Audio data loaded: {len(audio_data)} samples")
+            
+        except Exception as audio_error:
+            print(f"❌ Error loading audio with ffmpeg: {audio_error}")
+            return None
         
-        print("🎵 Transcribing audio data...")
-        # Add parameters to ensure fresh transcription with GPU optimization
-        result = model.transcribe(
-            audio_data, 
-            fp16=torch.cuda.is_available(),  # Use fp16 only if CUDA is available
-            verbose=False,
-            temperature=0.0,
-            no_speech_threshold=0.6
-        )
-        
-        print("✅ Transcription completed successfully!")
-        return result["text"]
+        print("🎵 Starting transcription...")
+        try:
+            # Enhanced transcription parameters for better accuracy
+            result = model.transcribe(
+                audio_data, 
+                fp16=torch.cuda.is_available(),  # Use fp16 only if CUDA is available
+                verbose=False,
+                temperature=0.0,
+                no_speech_threshold=0.6,
+                condition_on_previous_text=False,  # Reduce hallucinations
+                compression_ratio_threshold=2.4,  # Detect compression artifacts
+                logprob_threshold=-1.0,  # Threshold for word confidence
+                language=None  # Auto-detect language
+            )
+            
+            if not result or "text" not in result:
+                print("❌ Transcription failed - no result returned")
+                return None
+                
+            transcript_text = result["text"].strip()
+            
+            if not transcript_text:
+                print("❌ Transcription resulted in empty text")
+                return None
+            
+            # Check for obvious transcription issues
+            if len(transcript_text) < 10:
+                print(f"⚠️ Warning: Transcription is very short ({len(transcript_text)} characters): '{transcript_text}'")
+            
+            print(f"✅ Transcription completed successfully! ({len(transcript_text)} characters)")
+            print(f"📝 First 100 characters: {transcript_text[:100]}...")
+            
+            return transcript_text
+            
+        except Exception as transcription_error:
+            print(f"❌ Error during Whisper transcription: {transcription_error}")
+            return None
     
     except Exception as e:
         print(f"❌ Error transcribing audio: {e}")
